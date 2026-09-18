@@ -142,11 +142,11 @@ export function runKinematicsTests(): { total: number; passed: number; failed: n
   }
 
   // =========================================================================
-  // TEST SUITE 5: Mounting Transforms (Floor, Top, Side, Shelf)
+  // TEST SUITE 5: Mounting Transforms (Floor, Top, Side, Shelf, Rear)
   // =========================================================================
   {
     const suite = 'Mounting Transforms';
-    const mountTypes: RobotMountConfig['type'][] = ['floor', 'top', 'side', 'shelf'];
+    const mountTypes: RobotMountConfig['type'][] = ['floor', 'top', 'side', 'shelf', 'rear'];
 
     mountTypes.forEach((type) => {
       const mountConfig: RobotMountConfig = {

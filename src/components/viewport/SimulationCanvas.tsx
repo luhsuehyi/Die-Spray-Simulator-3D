@@ -5,9 +5,19 @@ import { forwardKinematics } from '../../utils/kinematics';
 import {
   buildToyoMachine,
   buildFactoryEquipment,
-  buildRealisticRobotArm
+  buildRobotMountStructure,
+  createRobotArmRig,
+  RobotArmRig,
+  MAT
 } from './cellSceneBuilder';
 import { buildCastPartMesh } from './castPartSceneBuilder';
+
+interface MistSeed {
+  t: number;
+  angle: number;
+  speed: number;
+  radiusFrac: number;
+}
 
 export const SimulationCanvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -32,7 +42,7 @@ export const SimulationCanvas: React.FC = () => {
     surfaceCells
   } = store;
 
-  // Scene references for updates
+  // Scene references
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -40,15 +50,24 @@ export const SimulationCanvas: React.FC = () => {
   const factoryGroupRef = useRef<THREE.Group | null>(null);
   const dieMeshGroupRef = useRef<THREE.Group | null>(null);
   const robotGroupRef = useRef<THREE.Group | null>(null);
+  const robotMountGroupRef = useRef<THREE.Group | null>(null);
+  const robotArmGroupRef = useRef<THREE.Group | null>(null);
+  const armRigRef = useRef<RobotArmRig | null>(null);
   const castPartGroupRef = useRef<THREE.Group | null>(null);
   const sprayConeRef = useRef<THREE.Mesh | null>(null);
   const mistParticlesRef = useRef<THREE.Points | null>(null);
   const waypointsGroupRef = useRef<THREE.Group | null>(null);
 
-  // Mouse orbit state
+  // Directional spray tracking
+  const currentSprayDirRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, -1));
+  const currentTcpPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const mistSeedsRef = useRef<MistSeed[]>([]);
+
+  // Smooth camera orbit state with damping
   const isDraggingRef = useRef(false);
   const mousePrevRef = useRef({ x: 0, y: 0 });
   const cameraOrbitRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3.2, radius: 2400 });
+  const cameraTargetOrbitRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3.2, radius: 2400 });
 
   // 1. Scene Initialization
   useEffect(() => {
@@ -56,50 +75,83 @@ export const SimulationCanvas: React.FC = () => {
     if (!container) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0e131f); // Dark industrial slate
-    scene.fog = new THREE.FogExp2(0x0e131f, 0.00025);
+    scene.background = new THREE.Color(0x0c111c); // Deep industrial slate
+    scene.fog = new THREE.FogExp2(0x0c111c, 0.00022);
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 10, 20000);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     rendererRef.current = renderer;
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // Industrial Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    // Soft Industrial Lighting Rig
+    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.55);
     scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xfff5ea, 1.4);
-    dirLight1.position.set(1600, 2600, 1800);
-    dirLight1.castShadow = true;
-    dirLight1.shadow.mapSize.width = 2048;
-    dirLight1.shadow.mapSize.height = 2048;
-    dirLight1.shadow.camera.near = 100;
-    dirLight1.shadow.camera.far = 8000;
+    // Primary High-Bay Key Light
+    const keyLight = new THREE.DirectionalLight(0xfff8ee, 1.4);
+    keyLight.position.set(1800, 2800, 2000);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    keyLight.shadow.camera.near = 100;
+    keyLight.shadow.camera.far = 8000;
+    keyLight.shadow.bias = -0.0008;
     const d = 2600;
-    dirLight1.shadow.camera.left = -d;
-    dirLight1.shadow.camera.right = d;
-    dirLight1.shadow.camera.top = d;
-    dirLight1.shadow.camera.bottom = -d;
-    scene.add(dirLight1);
+    keyLight.shadow.camera.left = -d;
+    keyLight.shadow.camera.right = d;
+    keyLight.shadow.camera.top = d;
+    keyLight.shadow.camera.bottom = -d;
+    scene.add(keyLight);
 
-    const dirLight2 = new THREE.DirectionalLight(0x88bbff, 0.7);
-    dirLight2.position.set(-1800, -1000, -1500);
-    scene.add(dirLight2);
+    // Cool High-Bay Fill Light
+    const fillLight = new THREE.DirectionalLight(0x60a5fa, 0.5);
+    fillLight.position.set(-2000, 1600, -1800);
+    scene.add(fillLight);
 
-    // Workshop Grid Floor
-    const grid = new THREE.GridHelper(8000, 80, 0x334155, 0x1e293b);
-    grid.position.y = -850;
-    scene.add(grid);
+    // Die Platen Daylight Inspection Spotlight
+    const dieSpot = new THREE.SpotLight(0xe0f2fe, 1.3, 4500, Math.PI / 4.2, 0.35, 1.2);
+    dieSpot.position.set(0, 2200, 0);
+    dieSpot.target.position.set(0, 0, 0);
+    scene.add(dieSpot);
+    scene.add(dieSpot.target);
 
-    // Major 3D Groups
+    // Contact Shadow Receiver Floor
+    const floorY = -850;
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x090d16,
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), floorMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.y = floorY;
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
+
+    // Dual-Tone Precision Workshop Grid
+    const mainGrid = new THREE.GridHelper(8000, 80, 0x334155, 0x172033);
+    mainGrid.position.y = floorY + 1;
+    scene.add(mainGrid);
+
+    const subGrid = new THREE.GridHelper(2400, 48, 0x475569, 0x1e293b);
+    subGrid.position.y = floorY + 2;
+    scene.add(subGrid);
+
+    // Structural Scene Groups
     const machineGroup = new THREE.Group();
     machineGroupRef.current = machineGroup;
     scene.add(machineGroup);
@@ -120,40 +172,65 @@ export const SimulationCanvas: React.FC = () => {
     robotGroupRef.current = robotGroup;
     scene.add(robotGroup);
 
+    const mountGroup = new THREE.Group();
+    robotMountGroupRef.current = mountGroup;
+    robotGroup.add(mountGroup);
+
+    const armGroup = new THREE.Group();
+    robotArmGroupRef.current = armGroup;
+    robotGroup.add(armGroup);
+
     const waypointsGroup = new THREE.Group();
     waypointsGroupRef.current = waypointsGroup;
     scene.add(waypointsGroup);
 
-    // Spray Cone & Mist
-    const coneGeo = new THREE.ConeGeometry(80, 240, 24, 1, true);
-    coneGeo.rotateX(-Math.PI / 2);
-    coneGeo.translate(0, 0, 120);
+    // Spray Cone Geometry: Apex at (0, 0, 0), expanding along +Z to length 260
+    const coneRadius = 85;
+    const coneLength = 260;
+    const coneGeo = new THREE.ConeGeometry(coneRadius, coneLength, 28, 1, true);
+    coneGeo.translate(0, -coneLength / 2, 0);
+    coneGeo.rotateX(Math.PI / 2);
+
     const coneMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.35,
       side: THREE.DoubleSide,
       depthWrite: false
     });
     const sprayCone = new THREE.Mesh(coneGeo, coneMat);
+    sprayCone.visible = false;
     sprayConeRef.current = sprayCone;
     scene.add(sprayCone);
 
-    // Mist Particles
-    const particleCount = 200;
+    // Directional Mist Particles streaming from TCP along spray cone
+    const particleCount = 240;
     const partGeo = new THREE.BufferGeometry();
     const partPos = new Float32Array(particleCount * 3);
-    for (let i = 0; i < particleCount * 3; i++) {
-      partPos[i] = (Math.random() - 0.5) * 80;
+    const seeds: MistSeed[] = [];
+    for (let i = 0; i < particleCount; i++) {
+      seeds.push({
+        t: Math.random(),
+        angle: Math.random() * Math.PI * 2,
+        speed: 0.02 + Math.random() * 0.03,
+        radiusFrac: Math.sqrt(Math.random())
+      });
+      partPos[i * 3] = 0;
+      partPos[i * 3 + 1] = 0;
+      partPos[i * 3 + 2] = 0;
     }
+    mistSeedsRef.current = seeds;
     partGeo.setAttribute('position', new THREE.BufferAttribute(partPos, 3));
+
     const partMat = new THREE.PointsMaterial({
       color: 0xbae6fd,
       size: 4.5,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.7,
+      depthWrite: false
     });
     const mistParticles = new THREE.Points(partGeo, partMat);
+    mistParticles.visible = false;
     mistParticlesRef.current = mistParticles;
     scene.add(mistParticles);
 
@@ -170,7 +247,7 @@ export const SimulationCanvas: React.FC = () => {
     });
     resizeObserver.observe(container);
 
-    // Mouse Interaction
+    // Mouse Controls
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0 || e.button === 2) {
         isDraggingRef.current = true;
@@ -184,8 +261,8 @@ export const SimulationCanvas: React.FC = () => {
       const dy = e.clientY - mousePrevRef.current.y;
       mousePrevRef.current = { x: e.clientX, y: e.clientY };
 
-      cameraOrbitRef.current.theta -= dx * 0.005;
-      cameraOrbitRef.current.phi = Math.max(0.08, Math.min(Math.PI - 0.08, cameraOrbitRef.current.phi - dy * 0.005));
+      cameraTargetOrbitRef.current.theta -= dx * 0.0055;
+      cameraTargetOrbitRef.current.phi = Math.max(0.08, Math.min(Math.PI / 2 - 0.02, cameraTargetOrbitRef.current.phi - dy * 0.0055));
     };
 
     const onMouseUp = () => {
@@ -194,7 +271,7 @@ export const SimulationCanvas: React.FC = () => {
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraOrbitRef.current.radius = Math.max(500, Math.min(6500, cameraOrbitRef.current.radius + e.deltaY * 1.5));
+      cameraTargetOrbitRef.current.radius = Math.max(500, Math.min(6500, cameraTargetOrbitRef.current.radius + e.deltaY * 1.5));
     };
 
     container.addEventListener('mousedown', onMouseDown);
@@ -202,26 +279,63 @@ export const SimulationCanvas: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
     container.addEventListener('wheel', onWheel, { passive: false });
 
-    // Render Loop
+    // Pre-allocated vectors for particle updates
+    const uVec = new THREE.Vector3();
+    const vVec = new THREE.Vector3();
+    const upRef = new THREE.Vector3(0, 1, 0);
+
+    // Animation & Render Loop
     let animId: number;
     const animate = () => {
       animId = requestAnimationFrame(animate);
 
+      // Smooth Camera Transitions via Exponential Lerp Damping
       if (cameraRef.current) {
-        const { theta, phi, radius } = cameraOrbitRef.current;
-        const cx = radius * Math.sin(phi) * Math.sin(theta);
-        const cy = radius * Math.cos(phi);
-        const cz = radius * Math.sin(phi) * Math.cos(theta);
+        const cur = cameraOrbitRef.current;
+        const tgt = cameraTargetOrbitRef.current;
+        cur.theta += (tgt.theta - cur.theta) * 0.09;
+        cur.phi += (tgt.phi - cur.phi) * 0.09;
+        cur.radius += (tgt.radius - cur.radius) * 0.09;
+
+        const cx = cur.radius * Math.sin(cur.phi) * Math.sin(cur.theta);
+        const cy = cur.radius * Math.cos(cur.phi);
+        const cz = cur.radius * Math.sin(cur.phi) * Math.cos(cur.theta);
         cameraRef.current.position.set(cx, cy, cz);
-        cameraRef.current.lookAt(0, 0, 0);
+        cameraRef.current.lookAt(0, 100, 0);
       }
 
+      // Directional Spray Particles Animation
       if (mistParticlesRef.current && mistParticlesRef.current.visible) {
         const positions = mistParticlesRef.current.geometry.attributes.position.array as Float32Array;
-        for (let i = 0; i < positions.length; i += 3) {
-          positions[i] += (Math.random() - 0.5) * 3.5;
-          positions[i + 1] += (Math.random() - 0.5) * 3.5;
-          positions[i + 2] += (Math.random() - 0.5) * 3.5;
+        const seedsList = mistSeedsRef.current;
+        const tcp = currentTcpPosRef.current;
+        const dir = currentSprayDirRef.current;
+
+        // Orthogonal coordinate frame relative to sprayDir
+        if (Math.abs(dir.y) > 0.95) {
+          upRef.set(1, 0, 0);
+        } else {
+          upRef.set(0, 1, 0);
+        }
+        uVec.crossVectors(dir, upRef).normalize();
+        vVec.crossVectors(dir, uVec).normalize();
+
+        for (let i = 0; i < seedsList.length; i++) {
+          const s = seedsList[i];
+          s.t = (s.t + s.speed) % 1.0;
+
+          const dist = s.t * coneLength;
+          const spread = s.t * coneRadius * s.radiusFrac;
+          const cosA = Math.cos(s.angle);
+          const sinA = Math.sin(s.angle);
+
+          const px = tcp.x + dir.x * dist + (uVec.x * cosA + vVec.x * sinA) * spread;
+          const py = tcp.y + dir.y * dist + (uVec.y * cosA + vVec.y * sinA) * spread;
+          const pz = tcp.z + dir.z * dist + (uVec.z * cosA + vVec.z * sinA) * spread;
+
+          positions[i * 3] = px;
+          positions[i * 3 + 1] = py;
+          positions[i * 3 + 2] = pz;
         }
         mistParticlesRef.current.geometry.attributes.position.needsUpdate = true;
       }
@@ -239,6 +353,10 @@ export const SimulationCanvas: React.FC = () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       container.removeEventListener('wheel', onWheel);
+      if (armRigRef.current) {
+        armRigRef.current.dispose();
+        armRigRef.current = null;
+      }
       if (rendererRef.current?.domElement && container.contains(rendererRef.current.domElement)) {
         container.removeChild(rendererRef.current.domElement);
       }
@@ -246,22 +364,22 @@ export const SimulationCanvas: React.FC = () => {
     };
   }, []);
 
-  // 2. Camera Preset Views
+  // 2. Camera Preset Views (Glides smoothly into view)
   useEffect(() => {
     if (!cameraRef.current) return;
     const targetRadius = Math.max(2000, machine.platenWidth * 2.2);
     if (cameraPreset === 'ISO') {
-      cameraOrbitRef.current = { theta: Math.PI / 4, phi: Math.PI / 3.2, radius: targetRadius };
+      cameraTargetOrbitRef.current = { theta: Math.PI / 4, phi: Math.PI / 3.2, radius: targetRadius };
     } else if (cameraPreset === 'FRONT') {
-      cameraOrbitRef.current = { theta: 0, phi: Math.PI / 2.05, radius: targetRadius * 0.75 };
+      cameraTargetOrbitRef.current = { theta: 0, phi: Math.PI / 2.05, radius: targetRadius * 0.75 };
     } else if (cameraPreset === 'TOP') {
-      cameraOrbitRef.current = { theta: 0, phi: 0.05, radius: targetRadius * 1.3 };
+      cameraTargetOrbitRef.current = { theta: 0, phi: 0.05, radius: targetRadius * 1.3 };
     } else if (cameraPreset === 'MACHINE') {
-      cameraOrbitRef.current = { theta: Math.PI * 0.72, phi: Math.PI / 3.4, radius: targetRadius * 1.1 };
+      cameraTargetOrbitRef.current = { theta: Math.PI * 0.72, phi: Math.PI / 3.4, radius: targetRadius * 1.1 };
     } else if (cameraPreset === 'ROBOT') {
-      cameraOrbitRef.current = { theta: Math.PI / 3, phi: Math.PI / 3.2, radius: 1400 };
+      cameraTargetOrbitRef.current = { theta: Math.PI / 3, phi: Math.PI / 3.2, radius: 1400 };
     } else if (cameraPreset === 'WORKSPACE') {
-      cameraOrbitRef.current = { theta: Math.PI * 0.15, phi: Math.PI / 2.15, radius: 950 };
+      cameraTargetOrbitRef.current = { theta: Math.PI * 0.15, phi: Math.PI / 2.15, radius: 950 };
     }
   }, [cameraPreset, machine.platenWidth]);
 
@@ -269,29 +387,29 @@ export const SimulationCanvas: React.FC = () => {
   useEffect(() => {
     if (!cameraRef.current) return;
     if (viewMode === 'top') {
-      cameraOrbitRef.current = { theta: 0, phi: 0.05, radius: 2500 };
+      cameraTargetOrbitRef.current = { theta: 0, phi: 0.05, radius: 2500 };
     } else if (viewMode === 'side') {
-      cameraOrbitRef.current = { theta: Math.PI / 2, phi: Math.PI / 2, radius: 2300 };
+      cameraTargetOrbitRef.current = { theta: Math.PI / 2, phi: Math.PI / 2, radius: 2300 };
     } else if (viewMode === 'front') {
-      cameraOrbitRef.current = { theta: 0, phi: Math.PI / 2, radius: 2300 };
+      cameraTargetOrbitRef.current = { theta: 0, phi: Math.PI / 2, radius: 2300 };
     }
   }, [viewMode]);
 
-  // 3. Rebuild Toyo DCM Machine Model
+  // 3. Rebuild Toyo DCM Machine Model (Only on machine or die changes)
   useEffect(() => {
     if (machineGroupRef.current) {
       buildToyoMachine(machineGroupRef.current, machine, die);
     }
   }, [machine, die]);
 
-  // 4. Rebuild Taiwanese Factory Automation Equipment
+  // 4. Rebuild Factory Automation Equipment
   useEffect(() => {
     if (factoryGroupRef.current) {
       buildFactoryEquipment(factoryGroupRef.current, factoryEquipment, machine, die);
     }
   }, [factoryEquipment, machine, die]);
 
-  // 5. Render Die Cavity Geometry & Heatmap Surface
+  // 5. Render Die Cavity Geometry with Industrial H13 Tool Steel & EDM Cavity Differentiation
   useEffect(() => {
     const group = dieMeshGroupRef.current;
     if (!group) return;
@@ -301,51 +419,65 @@ export const SimulationCanvas: React.FC = () => {
     }
 
     const { width, height, depth } = die.dimensions;
-    const steelMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      metalness: 0.85,
-      roughness: 0.25
-    });
 
-    // Fixed Die Block
+    // Fixed Die Bolster Block (H13 Brushed Tool Steel)
     const fixedDieBlock = new THREE.Mesh(
       new THREE.BoxGeometry(width, height, depth),
-      steelMat
+      MAT.dieSteelH13
     );
     fixedDieBlock.position.set(0, 0, die.fixedDieOffsetZ - depth / 2);
     fixedDieBlock.castShadow = true;
     fixedDieBlock.receiveShadow = true;
     group.add(fixedDieBlock);
 
-    // Movable Die Block
+    // Fixed Die Polished Parting Surface Bevel Plate
+    const fixedParting = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.96, height * 0.96, 6),
+      MAT.partingBevel
+    );
+    fixedParting.position.set(0, 0, die.fixedDieOffsetZ - 3);
+    group.add(fixedParting);
+
+    // Movable Die Bolster Block
     const movableDieBlock = new THREE.Mesh(
       new THREE.BoxGeometry(width, height, depth),
-      steelMat
+      MAT.dieSteelH13
     );
     movableDieBlock.position.set(0, 0, die.movableDieOffsetZ + depth / 2);
     movableDieBlock.castShadow = true;
     movableDieBlock.receiveShadow = true;
     group.add(movableDieBlock);
 
-    // Cavity Pockets & Features
-    const cavityMat = new THREE.MeshStandardMaterial({
-      color: 0x334155,
-      metalness: 0.9,
-      roughness: 0.2
-    });
+    // Movable Die Polished Parting Surface Bevel Plate
+    const movParting = new THREE.Mesh(
+      new THREE.BoxGeometry(width * 0.96, height * 0.96, 6),
+      MAT.partingBevel
+    );
+    movParting.position.set(0, 0, die.movableDieOffsetZ + 3);
+    group.add(movParting);
 
+    // Deep Recessed Mold Cavity Pockets (Dark Electrical Discharge Machining / EDM Texture)
     die.features.forEach(feat => {
       const [fx, fy] = feat.position;
       const [fw, fh, fd] = feat.dimensions;
 
+      // Fixed die cavity pocket
       const fGeom = new THREE.BoxGeometry(fw, fh, fd * 0.7);
-      const fMesh = new THREE.Mesh(fGeom, cavityMat);
+      const fMesh = new THREE.Mesh(fGeom, MAT.cavityDarkEDM);
       fMesh.position.set(fx, fy, die.fixedDieOffsetZ - fd * 0.35);
+      fMesh.castShadow = true;
       group.add(fMesh);
 
-      const mMesh = new THREE.Mesh(fGeom, cavityMat);
+      // Movable die cavity pocket
+      const mMesh = new THREE.Mesh(fGeom, MAT.cavityDarkEDM);
       mMesh.position.set(fx, fy, die.movableDieOffsetZ + fd * 0.35);
+      mMesh.castShadow = true;
       group.add(mMesh);
+
+      // Runner gate transition bevel
+      const runnerBevel = new THREE.Mesh(new THREE.BoxGeometry(fw * 0.35, 18, 12), MAT.copper);
+      runnerBevel.position.set(fx, fy - fh * 0.45, die.fixedDieOffsetZ - 4);
+      group.add(runnerBevel);
     });
 
     // Thermal Hot Spot Discs
@@ -356,8 +488,8 @@ export const SimulationCanvas: React.FC = () => {
       const spotMat = new THREE.MeshStandardMaterial({
         color: spotColor,
         emissive: spotColor,
-        emissiveIntensity: 0.7,
-        roughness: 0.3
+        emissiveIntensity: 0.75,
+        roughness: 0.25
       });
 
       const spotDisc = new THREE.Mesh(new THREE.CylinderGeometry(35, 35, 6, 24), spotMat);
@@ -395,7 +527,7 @@ export const SimulationCanvas: React.FC = () => {
             r = 0.95; g = 0.2; b = 0.1;
           }
         } else {
-          const tRatio = Math.max(0, Math.min(1, (c.temperature - 180) / 140));
+          const tRatio = Math.max(0, Math.min(1, (c.temperature - 120) / (320 - 120)));
           r = tRatio;
           g = Math.sin(tRatio * Math.PI);
           b = 1 - tRatio;
@@ -422,7 +554,7 @@ export const SimulationCanvas: React.FC = () => {
     }
   }, [die.id, showHeatmap, heatmapMetric, surfaceCells]);
 
-  // 5.5 Update 3D Cast Part Mesh & Grip Candidates in Daylight
+  // 5.5 Update 3D Cast Part Mesh & Grip Candidates
   useEffect(() => {
     const group = castPartGroupRef.current;
     if (!group) return;
@@ -436,24 +568,39 @@ export const SimulationCanvas: React.FC = () => {
     buildCastPartMesh(group, store.activeCastPart, daylightCenterZ, store.selectedGripCandidateId);
   }, [store.activeCastPart, store.selectedGripCandidateId, die.fixedDieOffsetZ, die.movableDieOffsetZ]);
 
-  // 6. Update Robot 3D Position, RoboDK-Style Geometry, and Spraying Mist
+  // 6A. Rebuild Robot Static Mount & Persist Arm Rig Geometry ONCE
+  // (Only rebuilt on robot model, tool type, or mounting change)
   useEffect(() => {
-    const group = robotGroupRef.current;
-    if (!group) return;
+    const mountGroup = robotMountGroupRef.current;
+    const armGroup = robotArmGroupRef.current;
+    if (!mountGroup || !armGroup) return;
 
+    // Build static pedestal / gantry / deck
+    buildRobotMountStructure(mountGroup, robotMountConfig, robot, machine);
+
+    // Recreate persistent 60FPS RobotArmRig
+    if (armRigRef.current) {
+      armRigRef.current.dispose();
+      armRigRef.current = null;
+    }
+    armRigRef.current = createRobotArmRig(armGroup, robot, tool, robotMountConfig.type);
+
+    // Perform initial pose update
+    const fk = forwardKinematics(currentRobotPose.jointAnglesDeg, robot, tool, robotMountConfig);
+    armRigRef.current.updatePose(fk.jointPositions, fk.tcpMatrix);
+  }, [robot, tool, robotMountConfig, machine]);
+
+  // 6B. Zero-Allocation Fast 60FPS Robot Pose & Spray Cone Orientation Update
+  useEffect(() => {
     const fk = forwardKinematics(currentRobotPose.jointAnglesDeg, robot, tool, robotMountConfig);
     const { tcp } = fk.jointPositions;
 
-    buildRealisticRobotArm(
-      group,
-      robot,
-      fk.jointPositions,
-      tool,
-      robotMountConfig,
-      machine
-    );
+    // 1. Update persistent robot arm transforms (Zero allocations)
+    if (armRigRef.current) {
+      armRigRef.current.updatePose(fk.jointPositions, fk.tcpMatrix);
+    }
 
-    // Active Spray Cone & Mist Orientation
+    // 2. Active Spray Cone & Mist Orientation
     if (sprayConeRef.current && mistParticlesRef.current) {
       const activeWp = waypoints[activeWaypointIndex];
       const isSpraying = activeWp && (activeWp.action === 'LUBE_SPRAY' || activeWp.action === 'AIR_BLOW' || activeWp.action === 'LUBE_AND_AIR');
@@ -461,19 +608,61 @@ export const SimulationCanvas: React.FC = () => {
       if (isSpraying && showSprayCone) {
         sprayConeRef.current.visible = true;
         mistParticlesRef.current.visible = true;
-        sprayConeRef.current.position.set(...tcp);
-        mistParticlesRef.current.position.set(...tcp);
 
+        // Position cone apex at TCP
+        sprayConeRef.current.position.set(tcp[0], tcp[1], tcp[2]);
+        currentTcpPosRef.current.set(tcp[0], tcp[1], tcp[2]);
+
+        // Compute physical nozzle pointing vector from TCP transform matrix
         const targetFace = activeWp.targetFace;
-        const dir = targetFace === 'FIXED_DIE' ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(0, 0, 1);
-        sprayConeRef.current.lookAt(tcp[0] + dir.x * 200, tcp[1] + dir.y * 200, tcp[2] + dir.z * 200);
+        // Dual-sided manifold: Fixed die nozzle is local -Z, Movable die nozzle is local +Z
+        const localNozzleZ = targetFace === 'MOVABLE_DIE' ? 1 : -1;
 
-        if (activeWp.action === 'AIR_BLOW') {
-          (sprayConeRef.current.material as THREE.MeshBasicMaterial).color.setHex(0xe0f2fe);
-          (sprayConeRef.current.material as THREE.MeshBasicMaterial).opacity = 0.25;
+        let sprayDir = new THREE.Vector3(0, 0, localNozzleZ);
+        if (fk.tcpMatrix && fk.tcpMatrix.length === 16) {
+          const m = fk.tcpMatrix;
+          const m4 = new THREE.Matrix4().set(
+            m[0], m[1], m[2], m[3],
+            m[4], m[5], m[6], m[7],
+            m[8], m[9], m[10], m[11],
+            m[12], m[13], m[14], m[15]
+          );
+          const pos = new THREE.Vector3();
+          const quat = new THREE.Quaternion();
+          const scl = new THREE.Vector3();
+          m4.decompose(pos, quat, scl);
+
+          // Apply physical tool orientation
+          sprayDir.applyQuaternion(quat);
+        }
+
+        // Normalize direction vector
+        if (sprayDir.lengthSq() > 0.001) {
+          sprayDir.normalize();
         } else {
-          (sprayConeRef.current.material as THREE.MeshBasicMaterial).color.setHex(0x38bdf8);
-          (sprayConeRef.current.material as THREE.MeshBasicMaterial).opacity = 0.45;
+          sprayDir.set(0, 0, localNozzleZ);
+        }
+
+        currentSprayDirRef.current.copy(sprayDir);
+
+        // Aim the spray cone: apex stays at TCP, cone expands along sprayDir
+        const targetLook = new THREE.Vector3(
+          tcp[0] + sprayDir.x * 260,
+          tcp[1] + sprayDir.y * 260,
+          tcp[2] + sprayDir.z * 260
+        );
+        sprayConeRef.current.lookAt(targetLook);
+
+        // Distinct Industrial Material Colors for Spray vs Air
+        const coneMat = sprayConeRef.current.material as THREE.MeshBasicMaterial;
+        if (activeWp.action === 'AIR_BLOW') {
+          coneMat.color.setHex(0xe0f2fe);
+          coneMat.opacity = 0.28;
+          (mistParticlesRef.current.material as THREE.PointsMaterial).color.setHex(0xf0f9ff);
+        } else {
+          coneMat.color.setHex(0x38bdf8);
+          coneMat.opacity = 0.42;
+          (mistParticlesRef.current.material as THREE.PointsMaterial).color.setHex(0x7dd3fc);
         }
       } else {
         sprayConeRef.current.visible = false;
@@ -485,13 +674,13 @@ export const SimulationCanvas: React.FC = () => {
     robot,
     tool,
     robotMountConfig,
-    machine,
     activeWaypointIndex,
     showSprayCone,
     waypoints
   ]);
 
   // 7. Update Trajectory Ribbon & Waypoint Markers
+  // Distinguishes spray (cyan), air-blow (ice white), transit (amber dashed), and active TCP path (emerald)
   useEffect(() => {
     const group = waypointsGroupRef.current;
     if (!group) return;
@@ -500,47 +689,127 @@ export const SimulationCanvas: React.FC = () => {
       group.remove(group.children[0]);
     }
 
-    const pts = waypoints.map(wp => new THREE.Vector3(wp.x, wp.y, wp.z));
-    if (pts.length > 1) {
-      const curve = new THREE.CatmullRomCurve3(pts);
-      const curvePoints = curve.getPoints(Math.max(50, waypoints.length * 12));
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(curvePoints);
-      const lineMat = new THREE.LineBasicMaterial({
-        color: 0x38bdf8,
-        linewidth: 2,
-        transparent: true,
-        opacity: 0.8
-      });
-      const pathLine = new THREE.Line(lineGeo, lineMat);
-      group.add(pathLine);
+    if (waypoints.length > 1) {
+      // Draw professional segmented trajectory paths
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const wpA = waypoints[i];
+        const wpB = waypoints[i + 1];
+        const isCurrentSegment = i === activeWaypointIndex - 1;
+
+        const pA = new THREE.Vector3(wpA.x, wpA.y, wpA.z);
+        const pB = new THREE.Vector3(wpB.x, wpB.y, wpB.z);
+
+        const curve = new THREE.CatmullRomCurve3([pA, pB]);
+        const pts = curve.getPoints(16);
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+
+        let lineMat: THREE.LineBasicMaterial | THREE.LineDashedMaterial;
+
+        if (isCurrentSegment) {
+          // Highlight active TCP transit segment with vibrant emerald
+          lineMat = new THREE.LineBasicMaterial({
+            color: 0x10b981,
+            linewidth: 3,
+            transparent: true,
+            opacity: 0.95
+          });
+        } else if (wpB.action === 'LUBE_SPRAY' || wpB.action === 'LUBE_AND_AIR') {
+          // Spray segment: Solid vivid electric cyan
+          lineMat = new THREE.LineBasicMaterial({
+            color: 0x0284c7,
+            linewidth: 2,
+            transparent: true,
+            opacity: 0.9
+          });
+        } else if (wpB.action === 'AIR_BLOW') {
+          // Air-blow segment: Arctic icy sky-blue
+          lineMat = new THREE.LineDashedMaterial({
+            color: 0x7dd3fc,
+            linewidth: 2,
+            dashSize: 18,
+            gapSize: 10,
+            transparent: true,
+            opacity: 0.85
+          });
+        } else {
+          // Transit segment: Industrial amber dashed
+          lineMat = new THREE.LineDashedMaterial({
+            color: 0xf59e0b,
+            linewidth: 1,
+            dashSize: 16,
+            gapSize: 12,
+            transparent: true,
+            opacity: 0.75
+          });
+        }
+
+        const segmentLine = new THREE.Line(lineGeo, lineMat);
+        if ('computeLineDistances' in segmentLine) {
+          segmentLine.computeLineDistances();
+        }
+        group.add(segmentLine);
+      }
     }
 
+    // Render Waypoint Markers
     waypoints.forEach((wp, idx) => {
       const isSelected = wp.id === selectedWaypointId;
       const isActive = idx === activeWaypointIndex;
 
-      let wpColor = 0x64748b;
+      let wpColor = 0x64748b; // Transit default
       if (wp.action === 'LUBE_SPRAY' || wp.action === 'LUBE_AND_AIR') {
-        wpColor = 0x0284c7;
+        wpColor = 0x0284c7; // Spray cyan
       } else if (wp.action === 'AIR_BLOW') {
-        wpColor = 0x38bdf8;
+        wpColor = 0x38bdf8; // Air sky blue
       }
 
-      if (isActive) wpColor = 0x10b981;
-      if (isSelected) wpColor = 0xf59e0b;
+      if (isActive) wpColor = 0x10b981; // Active vibrant emerald
+      if (isSelected) wpColor = 0xf59e0b; // Selected golden amber
 
-      const size = isSelected || isActive ? 26 : 18;
-      const sphereGeo = new THREE.SphereGeometry(size, 16, 16);
+      const size = isActive ? 24 : isSelected ? 22 : 16;
+      const sphereGeo = new THREE.SphereGeometry(size, 18, 18);
       const sphereMat = new THREE.MeshStandardMaterial({
         color: wpColor,
-        emissive: isSelected || isActive ? wpColor : 0x000000,
-        emissiveIntensity: 0.5,
+        emissive: isActive ? 0x10b981 : isSelected ? 0xf59e0b : 0x000000,
+        emissiveIntensity: isActive || isSelected ? 0.75 : 0.0,
+        metalness: 0.7,
         roughness: 0.3
       });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
       sphere.position.set(wp.x, wp.y, wp.z);
       sphere.userData = { waypointId: wp.id };
       group.add(sphere);
+
+      // Active Target Waypoint Indicator Ring
+      if (isActive) {
+        const ringGeo = new THREE.RingGeometry(size * 1.4, size * 1.8, 24);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.8
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.set(wp.x, wp.y, wp.z);
+        ringMesh.rotation.x = Math.PI / 2;
+        group.add(ringMesh);
+
+        // Direction indicator arrow towards target face
+        const arrowDir = wp.targetFace === 'MOVABLE_DIE' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 0, -1);
+        const arrowHelper = new THREE.ArrowHelper(arrowDir, new THREE.Vector3(wp.x, wp.y, wp.z), 90, 0x10b981, 28, 16);
+        group.add(arrowHelper);
+      }
+
+      // Selected Waypoint Golden Focus Ring
+      if (isSelected && !isActive) {
+        const selRing = new THREE.Mesh(
+          new THREE.RingGeometry(size * 1.35, size * 1.65, 24),
+          new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
+        );
+        selRing.position.set(wp.x, wp.y, wp.z);
+        selRing.rotation.x = Math.PI / 2;
+        group.add(selRing);
+      }
     });
   }, [waypoints, selectedWaypointId, activeWaypointIndex]);
 

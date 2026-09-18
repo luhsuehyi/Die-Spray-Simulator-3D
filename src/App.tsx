@@ -30,49 +30,8 @@ import { useSimulationStore } from './store/simulationStore';
 import { LayoutGrid, Box } from 'lucide-react';
 
 export default function App() {
-  const {
-    isPlaying,
-    currentTimeSec,
-    setCurrentTimeSec,
-    playbackSpeed,
-    trajectoryPlan,
-    resetSimulation,
-    appMode
-  } = useSimulationStore();
-
+  const { appMode } = useSimulationStore();
   const [use2DPlanView, setUse2DPlanView] = useState(false);
-  const lastTimeRef = useRef<number | null>(null);
-
-  // High-Precision Animation Tick Loop for Smooth Playback
-  useEffect(() => {
-    if (!isPlaying) {
-      lastTimeRef.current = null;
-      return;
-    }
-
-    let animFrame: number;
-    const tick = (now: number) => {
-      if (lastTimeRef.current !== null) {
-        const deltaSec = (now - lastTimeRef.current) / 1000;
-        const totalDuration = trajectoryPlan.totalDurationSec || 10;
-        const nextTime = currentTimeSec + deltaSec * playbackSpeed;
-
-        if (nextTime >= totalDuration) {
-          // Loop or stop
-          setCurrentTimeSec(0);
-        } else {
-          setCurrentTimeSec(nextTime);
-        }
-      }
-      lastTimeRef.current = now;
-      animFrame = requestAnimationFrame(tick);
-    };
-
-    animFrame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(animFrame);
-    };
-  }, [isPlaying, currentTimeSec, playbackSpeed, trajectoryPlan.totalDurationSec, setCurrentTimeSec]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans select-none antialiased">

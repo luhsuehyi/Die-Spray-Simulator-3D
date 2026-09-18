@@ -4,11 +4,14 @@ import { DieModel } from '../../types/die';
 import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle } from '../../types/robot';
 
 // Material Cache to avoid recreating shaders every frame
-const MAT = {
-  toyoGreen: new THREE.MeshStandardMaterial({ color: 0x2e4036, metalness: 0.5, roughness: 0.45 }), // Toyo Industrial Green-Grey
+export const MAT = {
+  toyoGreen: new THREE.MeshStandardMaterial({ color: 0x24332c, metalness: 0.55, roughness: 0.4 }), // Toyo Industrial Green-Grey
   toyoGrey: new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.35 }), // Cast Platen Charcoal
   platenSteel: new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85, roughness: 0.28 }),
-  chromeTieBar: new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.95, roughness: 0.12 }),
+  chromeTieBar: new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.96, roughness: 0.08 }),
+  dieSteelH13: new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.88, roughness: 0.22 }),
+  cavityDarkEDM: new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.92, roughness: 0.18 }),
+  partingBevel: new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.9, roughness: 0.15 }),
   brass: new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8, roughness: 0.25 }),
   copper: new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.85, roughness: 0.25 }),
   jointDark: new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.2 }),
@@ -21,10 +24,14 @@ const MAT = {
   furnaceRefractory: new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4, roughness: 0.7 }),
   conduitBlack: new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.2, roughness: 0.85 }),
   quenchWater: new THREE.MeshStandardMaterial({ color: 0x0284c7, transparent: true, opacity: 0.65, roughness: 0.1 }),
-  toolBlue: new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.7, roughness: 0.3 }),
+  toolBlue: new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.75, roughness: 0.28 }),
   alertRed: new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.6, roughness: 0.2 }),
   alertAmber: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.6, roughness: 0.2 }),
-  alertGreen: new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.7, roughness: 0.2 })
+  alertGreen: new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 0.7, roughness: 0.2 }),
+  fanucYellow: new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.55, roughness: 0.38 }),
+  yaskawaBlue: new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.68, roughness: 0.32 }),
+  abbWhite: new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.65, roughness: 0.28 }),
+  kukaOrange: new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.62, roughness: 0.35 })
 };
 
 /**
@@ -749,48 +756,44 @@ export function buildFactoryEquipment(
 }
 
 /**
- * Builds the realistic 6-Axis Industrial Robot Arm (Yaskawa / Fanuc / ABB / Kuka style)
+ * Robot Arm Rig Interface for Zero-Allocation 60FPS Kinematic Updates
  */
-export function buildRealisticRobotArm(
+export interface RobotArmRig {
+  armGroup: THREE.Group;
+  updatePose: (
+    joints: {
+      base: [number, number, number];
+      shoulder: [number, number, number];
+      elbow: [number, number, number];
+      wristPitch?: [number, number, number];
+      wristYaw: [number, number, number];
+      tcp: [number, number, number];
+    },
+    tcpMatrix?: number[]
+  ) => void;
+  dispose: () => void;
+}
+
+/**
+ * Builds the static mounting structure (pedestal, gantry, shelf, or deck)
+ * Only rebuilt when mount configuration or machine dimensions change.
+ */
+export function buildRobotMountStructure(
   group: THREE.Group,
-  robot: RobotModelSpec,
-  joints: {
-    base: [number, number, number];
-    shoulder: [number, number, number];
-    elbow: [number, number, number];
-    wristPitch: [number, number, number];
-    wristYaw: [number, number, number];
-    tcp: [number, number, number];
-  },
-  tool: ToolCenterPoint,
   mountConfig: {
     type: RobotMountType;
     topMountStyle?: TopMountStyle;
   },
-  machine: DieCastingMachine
+  robot: RobotModelSpec,
+  machine: DieCastingMachine,
+  basePos?: [number, number, number]
 ) {
   while (group.children.length > 0) {
     group.remove(group.children[0]);
   }
 
-  const { base, shoulder, elbow, wristYaw, tcp } = joints;
-
-  // Robot Manufacturer Colors:
-  // YASKAWA: Motoman High-Gloss Blue (0x0284c7)
-  // FANUC: Safety Foundry Yellow (0xf59e0b)
-  // ABB: Industrial Pure White (0xf8fafc)
-  // KUKA: Foundry Signal Orange (0xe11d48 / 0xf97316)
-  let robotCastMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.65, roughness: 0.35 });
-  if (robot.manufacturer === 'FANUC') {
-    robotCastMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.6, roughness: 0.4 });
-  } else if (robot.manufacturer === 'ABB') {
-    robotCastMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.7, roughness: 0.3 });
-  } else if (robot.manufacturer === 'KUKA') {
-    robotCastMat = new THREE.MeshStandardMaterial({ color: 0xf97316, metalness: 0.65, roughness: 0.35 });
-  }
-
-  // 1. MOUNTING STRUCTURE BASED ON MOUNT PRESET (TOP, SIDE, FLOOR, REAR)
   const mountType = mountConfig.type || robot.mountOrientation;
+  const base = basePos || (robot.baseOffset ? [robot.baseOffset[0], robot.baseOffset[1], robot.baseOffset[2]] as [number, number, number] : [0, 1600, 0]);
 
   if (mountType === 'top' || mountType === 'top_machine_mount') {
     if (mountConfig.topMountStyle === 'platen_direct') {
@@ -844,25 +847,6 @@ export function buildRealisticRobotArm(
         gauge.position.set(cabX + gx, cabY + 110, cabZ + cabinetD / 2 + 6);
         group.add(gauge);
       });
-
-      // Flexible Corrugated Umbilical Dress Pack
-      try {
-        const dCurve = new THREE.CatmullRomCurve3([
-          new THREE.Vector3(cabX, cabY + cabinetH / 2 + 50, cabZ),
-          new THREE.Vector3(base[0] + 160, base[1] + 380, base[2] - 20),
-          new THREE.Vector3(shoulder[0], shoulder[1] + 110, shoulder[2] - 20),
-          new THREE.Vector3(elbow[0], elbow[1] + 70, elbow[2] - 15),
-          new THREE.Vector3(wristYaw[0], wristYaw[1] + 30, wristYaw[2] - 10)
-        ]);
-        const dressPack = new THREE.Mesh(
-          new THREE.TubeGeometry(dCurve, 24, 18, 10, false),
-          MAT.conduitBlack
-        );
-        dressPack.castShadow = true;
-        group.add(dressPack);
-      } catch (e) {
-        // Ignore
-      }
     } else {
       // Overhead Gantry Bridge Frame
       const gantryW = machine.platenWidth * 1.35;
@@ -887,7 +871,7 @@ export function buildRealisticRobotArm(
   } else if (mountType === 'floor') {
     // --- FLOOR-ANCHORED HEAVY PEDESTAL ---
     const floorY = -850;
-    const pedHeight = base[1] - floorY;
+    const pedHeight = Math.max(100, base[1] - floorY);
     const pedRadius = 240;
 
     // Cylindrical Structural Steel Pedestal
@@ -940,111 +924,288 @@ export function buildRealisticRobotArm(
     rearBeam.position.set(base[0], base[1] - 40, base[2] + 320);
     group.add(rearBeam);
   }
+}
 
-  // 2. ROBOT 6-AXIS KINEMATIC GEOMETRY (RoboDK Style Manipulator)
-  // Joint 1: Base Turntable
-  const baseFlange = new THREE.Mesh(
-    new THREE.CylinderGeometry(220, 240, 80, 32),
-    MAT.jointDark
-  );
-  baseFlange.position.set(...base);
-  baseFlange.castShadow = true;
-  group.add(baseFlange);
+/**
+ * Creates a persistent RobotArmRig that instantiates Three.js geometries ONCE,
+ * updating joint transforms efficiently at 60 FPS without scene graph rebuilds.
+ */
+export function createRobotArmRig(
+  armGroup: THREE.Group,
+  robot: RobotModelSpec,
+  tool: ToolCenterPoint,
+  mountType: RobotMountType = 'top'
+): RobotArmRig {
+  while (armGroup.children.length > 0) {
+    armGroup.remove(armGroup.children[0]);
+  }
 
-  // Joint 2: Swiveling Shoulder Fork
-  const fork = new THREE.Mesh(
-    new THREE.BoxGeometry(190, 200, 220),
-    robotCastMat
-  );
-  fork.position.set(base[0], base[1] + 120, base[2]);
-  fork.castShadow = true;
-  group.add(fork);
+  // Manufacturer Coating
+  let castMat: THREE.Material = MAT.yaskawaBlue;
+  if (robot.manufacturer === 'FANUC') {
+    castMat = MAT.fanucYellow;
+  } else if (robot.manufacturer === 'ABB') {
+    castMat = MAT.abbWhite;
+  } else if (robot.manufacturer === 'KUKA') {
+    castMat = MAT.kukaOrange;
+  }
 
-  // Kinematic Links (Link 1: Shoulder to Elbow; Link 2: Elbow to Wrist; Link 3: Wrist to TCP)
-  const buildLimb = (v1: [number, number, number], v2: [number, number, number], r: number, mat: THREE.Material) => {
-    const p1 = new THREE.Vector3(...v1);
-    const p2 = new THREE.Vector3(...v2);
-    const dist = p1.distanceTo(p2);
-    if (dist < 1) return;
+  const isTop = mountType === 'top' || mountType === 'top_machine_mount';
 
-    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r, dist, 24), mat);
-    cyl.position.copy(p1.clone().add(p2).multiplyScalar(0.5));
-    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
-    cyl.castShadow = true;
-    group.add(cyl);
+  // 1. Joint 1: Base Turntable
+  const baseFlangeGeo = new THREE.CylinderGeometry(220, 240, 80, 32);
+  const baseFlangeMesh = new THREE.Mesh(baseFlangeGeo, MAT.jointDark);
+  baseFlangeMesh.castShadow = true;
+  armGroup.add(baseFlangeMesh);
 
-    // Rotary Joint Hub Knuckle
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(r * 1.25, 20, 20), MAT.jointDark);
-    sphere.position.copy(p1);
-    sphere.castShadow = true;
-    group.add(sphere);
-  };
+  // 2. Swiveling Shoulder Fork
+  const forkGeo = new THREE.BoxGeometry(190, 200, 220);
+  const forkMesh = new THREE.Mesh(forkGeo, castMat);
+  forkMesh.castShadow = true;
+  armGroup.add(forkMesh);
 
-  buildLimb(shoulder, elbow, 85, robotCastMat);
-  buildLimb(elbow, wristYaw, 68, robotCastMat);
-  buildLimb(wristYaw, tcp, 50, MAT.jointDark);
+  // 3. Shoulder Knuckle
+  const shoulderKnuckleGeo = new THREE.SphereGeometry(105, 24, 24);
+  const shoulderKnuckleMesh = new THREE.Mesh(shoulderKnuckleGeo, MAT.jointDark);
+  shoulderKnuckleMesh.castShadow = true;
+  armGroup.add(shoulderKnuckleMesh);
 
-  // 3. INDUSTRIAL DIE SPRAY TOOL AT TCP
+  // 4. Link 1: Upper Arm (Shoulder to Elbow)
+  const upperArmGeo = new THREE.CylinderGeometry(78, 92, 1, 24);
+  upperArmGeo.translate(0, 0.5, 0);
+  const upperArmMesh = new THREE.Mesh(upperArmGeo, castMat);
+  upperArmMesh.castShadow = true;
+  armGroup.add(upperArmMesh);
+
+  // 5. Elbow Knuckle
+  const elbowKnuckleGeo = new THREE.SphereGeometry(88, 24, 24);
+  const elbowKnuckleMesh = new THREE.Mesh(elbowKnuckleGeo, MAT.jointDark);
+  elbowKnuckleMesh.castShadow = true;
+  armGroup.add(elbowKnuckleMesh);
+
+  // 6. Link 2: Forearm (Elbow to Wrist)
+  const forearmGeo = new THREE.CylinderGeometry(62, 74, 1, 24);
+  forearmGeo.translate(0, 0.5, 0);
+  const forearmMesh = new THREE.Mesh(forearmGeo, castMat);
+  forearmMesh.castShadow = true;
+  armGroup.add(forearmMesh);
+
+  // 7. Wrist Knuckle
+  const wristKnuckleGeo = new THREE.SphereGeometry(62, 20, 20);
+  const wristKnuckleMesh = new THREE.Mesh(wristKnuckleGeo, MAT.jointDark);
+  wristKnuckleMesh.castShadow = true;
+  armGroup.add(wristKnuckleMesh);
+
+  // 8. Link 3: Wrist to TCP Link Barrel
+  const wristLimbGeo = new THREE.CylinderGeometry(46, 54, 1, 20);
+  wristLimbGeo.translate(0, 0.5, 0);
+  const wristLimbMesh = new THREE.Mesh(wristLimbGeo, MAT.jointDark);
+  wristLimbMesh.castShadow = true;
+  armGroup.add(wristLimbMesh);
+
+  // 9. Tool Manifold Group (Positioned at TCP with physical kinematic orientation)
+  const toolGroup = new THREE.Group();
+  armGroup.add(toolGroup);
+
   const mWidth = tool.manifoldWidthMm || 360;
   const headType = tool.sprayHeadType || 'dual_sided';
 
   if (headType === 'dual_sided') {
     // Dual-Sided Opposing Manifold
     const manifoldHub = new THREE.Mesh(new THREE.BoxGeometry(mWidth, 60, 50), MAT.toolBlue);
-    manifoldHub.position.set(...tcp);
     manifoldHub.castShadow = true;
-    group.add(manifoldHub);
+    toolGroup.add(manifoldHub);
 
-    // Fixed die spray face nozzles (-Z)
+    // Fixed die spray face nozzles (local -Z)
     const fixedFace = new THREE.Mesh(new THREE.BoxGeometry(mWidth * 0.88, 16, 14), MAT.brass);
-    fixedFace.position.set(tcp[0], tcp[1], tcp[2] - 32);
-    group.add(fixedFace);
+    fixedFace.position.set(0, 0, -32);
+    toolGroup.add(fixedFace);
 
-    // Moving die spray face nozzles (+Z)
+    // Moving die spray face nozzles (local +Z)
     const movFace = new THREE.Mesh(new THREE.BoxGeometry(mWidth * 0.88, 16, 14), MAT.brass);
-    movFace.position.set(tcp[0], tcp[1], tcp[2] + 32);
-    group.add(movFace);
+    movFace.position.set(0, 0, 32);
+    toolGroup.add(movFace);
   } else if (headType === 'contour_frame') {
     // Picture-Frame Rectangular Manifold
     const fTop = new THREE.Mesh(new THREE.BoxGeometry(mWidth, 26, 32), MAT.toolBlue);
-    fTop.position.set(tcp[0], tcp[1] + 75, tcp[2]);
-    group.add(fTop);
+    fTop.position.set(0, 75, 0);
+    toolGroup.add(fTop);
 
     const fBot = new THREE.Mesh(new THREE.BoxGeometry(mWidth, 26, 32), MAT.toolBlue);
-    fBot.position.set(tcp[0], tcp[1] - 75, tcp[2]);
-    group.add(fBot);
+    fBot.position.set(0, -75, 0);
+    toolGroup.add(fBot);
 
     const fLegL = new THREE.Mesh(new THREE.BoxGeometry(26, 170, 32), MAT.toolBlue);
-    fLegL.position.set(tcp[0] - mWidth / 2 + 13, tcp[1], tcp[2]);
-    group.add(fLegL);
+    fLegL.position.set(-mWidth / 2 + 13, 0, 0);
+    toolGroup.add(fLegL);
 
     const fLegR = new THREE.Mesh(new THREE.BoxGeometry(26, 170, 32), MAT.toolBlue);
-    fLegR.position.set(tcp[0] + mWidth / 2 - 13, tcp[1], tcp[2]);
-    group.add(fLegR);
+    fLegR.position.set(mWidth / 2 - 13, 0, 0);
+    toolGroup.add(fLegR);
   } else if (headType === 'modular_extension') {
     // Extended deep cavity lances
     const mBase = new THREE.Mesh(new THREE.CylinderGeometry(45, 50, 35, 16), MAT.jointDark);
-    mBase.position.set(...tcp);
-    group.add(mBase);
+    toolGroup.add(mBase);
 
     [-65, 65].forEach(lx => {
       const lance = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 240, 16), MAT.platenSteel);
       lance.rotation.x = Math.PI / 2;
-      lance.position.set(tcp[0] + lx, tcp[1], tcp[2] - 120);
-      group.add(lance);
+      lance.position.set(lx, 0, -120);
+      toolGroup.add(lance);
 
       const brassTip = new THREE.Mesh(new THREE.SphereGeometry(15, 12, 12), MAT.brass);
-      brassTip.position.set(tcp[0] + lx, tcp[1], tcp[2] - 240);
-      group.add(brassTip);
+      brassTip.position.set(lx, 0, -240);
+      toolGroup.add(brassTip);
     });
   } else {
     // Micro-Spray / Conventional Manifold
     const bar = new THREE.Mesh(new THREE.BoxGeometry(mWidth, 48, 38), MAT.platenSteel);
-    bar.position.set(...tcp);
-    group.add(bar);
+    toolGroup.add(bar);
 
     const nozzleStrip = new THREE.Mesh(new THREE.BoxGeometry(mWidth * 0.9, 10, 8), MAT.brass);
-    nozzleStrip.position.set(tcp[0], tcp[1], tcp[2] - 22);
-    group.add(nozzleStrip);
+    nozzleStrip.position.set(0, 0, -22);
+    toolGroup.add(nozzleStrip);
   }
+
+  // Pre-allocated math objects for updatePose
+  const unitY = new THREE.Vector3(0, 1, 0);
+  const p1 = new THREE.Vector3();
+  const p2 = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+  const m4 = new THREE.Matrix4();
+  const pos = new THREE.Vector3();
+  const quat = new THREE.Quaternion();
+  const scl = new THREE.Vector3();
+
+  const updatePose = (
+    joints: {
+      base: [number, number, number];
+      shoulder: [number, number, number];
+      elbow: [number, number, number];
+      wristPitch?: [number, number, number];
+      wristYaw: [number, number, number];
+      tcp: [number, number, number];
+    },
+    tcpMatrix?: number[]
+  ) => {
+    const { base, shoulder, elbow, wristYaw, tcp } = joints;
+
+    // 1. Base turntable
+    baseFlangeMesh.position.set(base[0], base[1], base[2]);
+
+    // 2. Fork
+    forkMesh.position.set(base[0], base[1] + (isTop ? -85 : 85), base[2]);
+
+    // 3. Shoulder Knuckle
+    shoulderKnuckleMesh.position.set(shoulder[0], shoulder[1], shoulder[2]);
+
+    // 4. Upper Arm (Shoulder -> Elbow)
+    p1.set(shoulder[0], shoulder[1], shoulder[2]);
+    p2.set(elbow[0], elbow[1], elbow[2]);
+    dir.subVectors(p2, p1);
+    const distSE = dir.length();
+    if (distSE > 0.001) {
+      dir.divideScalar(distSE);
+      upperArmMesh.position.copy(p1);
+      upperArmMesh.scale.set(1, distSE, 1);
+      upperArmMesh.quaternion.setFromUnitVectors(unitY, dir);
+    }
+
+    // 5. Elbow Knuckle
+    elbowKnuckleMesh.position.set(elbow[0], elbow[1], elbow[2]);
+
+    // 6. Forearm (Elbow -> Wrist)
+    p1.set(elbow[0], elbow[1], elbow[2]);
+    p2.set(wristYaw[0], wristYaw[1], wristYaw[2]);
+    dir.subVectors(p2, p1);
+    const distEW = dir.length();
+    if (distEW > 0.001) {
+      dir.divideScalar(distEW);
+      forearmMesh.position.copy(p1);
+      forearmMesh.scale.set(1, distEW, 1);
+      forearmMesh.quaternion.setFromUnitVectors(unitY, dir);
+    }
+
+    // 7. Wrist Knuckle
+    wristKnuckleMesh.position.set(wristYaw[0], wristYaw[1], wristYaw[2]);
+
+    // 8. Wrist to TCP Link Barrel
+    p1.set(wristYaw[0], wristYaw[1], wristYaw[2]);
+    p2.set(tcp[0], tcp[1], tcp[2]);
+    dir.subVectors(p2, p1);
+    const distWT = dir.length();
+    if (distWT > 0.001) {
+      dir.divideScalar(distWT);
+      wristLimbMesh.position.copy(p1);
+      wristLimbMesh.scale.set(1, distWT, 1);
+      wristLimbMesh.quaternion.setFromUnitVectors(unitY, dir);
+    }
+
+    // 9. Tool Group Position & Orientation
+    toolGroup.position.set(tcp[0], tcp[1], tcp[2]);
+    if (tcpMatrix && tcpMatrix.length === 16) {
+      // Row-major conversion to Three.js Matrix4
+      m4.set(
+        tcpMatrix[0], tcpMatrix[1], tcpMatrix[2], tcpMatrix[3],
+        tcpMatrix[4], tcpMatrix[5], tcpMatrix[6], tcpMatrix[7],
+        tcpMatrix[8], tcpMatrix[9], tcpMatrix[10], tcpMatrix[11],
+        tcpMatrix[12], tcpMatrix[13], tcpMatrix[14], tcpMatrix[15]
+      );
+      m4.decompose(pos, quat, scl);
+      toolGroup.quaternion.copy(quat);
+    } else if (distWT > 0.001) {
+      toolGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
+    }
+  };
+
+  const dispose = () => {
+    baseFlangeGeo.dispose();
+    forkGeo.dispose();
+    shoulderKnuckleGeo.dispose();
+    upperArmGeo.dispose();
+    elbowKnuckleGeo.dispose();
+    forearmGeo.dispose();
+    wristKnuckleGeo.dispose();
+    wristLimbGeo.dispose();
+  };
+
+  return {
+    armGroup,
+    updatePose,
+    dispose
+  };
+}
+
+/**
+ * Backwards compatible helper function
+ */
+export function buildRealisticRobotArm(
+  group: THREE.Group,
+  robot: RobotModelSpec,
+  joints: {
+    base: [number, number, number];
+    shoulder: [number, number, number];
+    elbow: [number, number, number];
+    wristPitch: [number, number, number];
+    wristYaw: [number, number, number];
+    tcp: [number, number, number];
+  },
+  tool: ToolCenterPoint,
+  mountConfig: {
+    type: RobotMountType;
+    topMountStyle?: TopMountStyle;
+  },
+  machine: DieCastingMachine
+) {
+  while (group.children.length > 0) {
+    group.remove(group.children[0]);
+  }
+  const mountGroup = new THREE.Group();
+  group.add(mountGroup);
+  buildRobotMountStructure(mountGroup, mountConfig, robot, machine, joints.base);
+
+  const armSubGroup = new THREE.Group();
+  group.add(armSubGroup);
+  const rig = createRobotArmRig(armSubGroup, robot, tool, mountConfig.type);
+  rig.updatePose(joints);
 }

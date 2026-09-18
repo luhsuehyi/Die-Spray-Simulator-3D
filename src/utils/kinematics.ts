@@ -49,6 +49,12 @@ export function forwardKinematics(
 ): {
   tcpPosition: [number, number, number];
   tcpEuler: [number, number, number];
+  tcpMatrix: [
+    number, number, number, number,
+    number, number, number, number,
+    number, number, number, number,
+    number, number, number, number
+  ];
   jointPositions: JointPositions3D;
   flangePosition: [number, number, number];
   flangeEuler: [number, number, number];
@@ -59,6 +65,7 @@ export function forwardKinematics(
   return {
     tcpPosition: result.tcpPosition,
     tcpEuler: result.tcpEuler,
+    tcpMatrix: result.tcpMatrix,
     jointPositions: result.jointPositions,
     flangePosition: result.flangePosition,
     flangeEuler: result.flangeEuler

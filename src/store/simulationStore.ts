@@ -360,6 +360,52 @@ function emitChange() {
   globalStateListeners.forEach(listener => listener());
 }
 
+let playbackRafId: number | null = null;
+let lastPlaybackTimestamp: number | null = null;
+
+function runPlaybackTick(now: number) {
+  if (!storeState.isPlaying) {
+    playbackRafId = null;
+    lastPlaybackTimestamp = null;
+    return;
+  }
+
+  if (lastPlaybackTimestamp !== null) {
+    const dt = Math.min(0.1, (now - lastPlaybackTimestamp) / 1000);
+    const plan = calculateTrajectorySegments(storeState.waypoints);
+    const totalDuration = plan.totalDurationSec || 10;
+    const nextTime = storeState.currentTimeSec + dt * storeState.playbackSpeed;
+
+    if (nextTime >= totalDuration) {
+      storeState.currentTimeSec = 0; // loop simulation
+    } else {
+      storeState.currentTimeSec = nextTime;
+    }
+    emitChange();
+  }
+  lastPlaybackTimestamp = now;
+  playbackRafId = requestAnimationFrame(runPlaybackTick);
+}
+
+function startPlayback() {
+  storeState.isPlaying = true;
+  if (playbackRafId === null) {
+    lastPlaybackTimestamp = performance.now();
+    playbackRafId = requestAnimationFrame(runPlaybackTick);
+  }
+  emitChange();
+}
+
+function stopPlayback() {
+  storeState.isPlaying = false;
+  if (playbackRafId !== null) {
+    cancelAnimationFrame(playbackRafId);
+    playbackRafId = null;
+  }
+  lastPlaybackTimestamp = null;
+  emitChange();
+}
+
 export function useSimulationStore(): SimulationStore {
   const [, setTick] = useState(0);
 
@@ -898,8 +944,11 @@ export function useSimulationStore(): SimulationStore {
   }, []);
 
   const setIsPlaying = useCallback((playing: boolean) => {
-    storeState.isPlaying = playing;
-    emitChange();
+    if (playing) {
+      startPlayback();
+    } else {
+      stopPlayback();
+    }
   }, []);
 
   const setCurrentTimeSec = useCallback((t: number) => {
@@ -1043,31 +1092,6 @@ export function useSimulationStore(): SimulationStore {
     );
   }, [storeState.waypoints, storeState.robot, storeState.machine, storeState.die]);
 
-  // Simulation Clock Tick Loop
-  useEffect(() => {
-    if (!storeState.isPlaying) return;
-
-    let animFrame: number;
-    let lastTime = performance.now();
-
-    const loop = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-
-      const newT = storeState.currentTimeSec + dt * storeState.playbackSpeed;
-      if (newT >= trajectoryPlan.totalDurationSec) {
-        storeState.currentTimeSec = 0; // loop simulation
-      } else {
-        storeState.currentTimeSec = newT;
-      }
-      emitChange();
-      animFrame = requestAnimationFrame(loop);
-    };
-
-    animFrame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(animFrame);
-  }, [storeState.isPlaying, storeState.playbackSpeed, trajectoryPlan.totalDurationSec]);
-
   const stepForward = useCallback(() => {
     const nextIdx = Math.min(storeState.waypoints.length - 1, activeWaypointIndex + 1);
     const targetWp = storeState.waypoints[nextIdx];
@@ -1087,8 +1111,8 @@ export function useSimulationStore(): SimulationStore {
   }, [activeWaypointIndex, trajectoryPlan]);
 
   const resetSimulation = useCallback(() => {
+    stopPlayback();
     storeState.currentTimeSec = 0;
-    storeState.isPlaying = false;
     emitChange();
   }, []);
 
