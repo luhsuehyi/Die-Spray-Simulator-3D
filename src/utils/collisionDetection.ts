@@ -16,20 +16,20 @@ export function runCollisionAudit(
   let hasCollision = false;
 
   // Machine tie bar positions in XY plane (centered at origin)
+  // tieBarClearanceH and tieBarClearanceV define the inner clearance (daylight) between columns.
+  // Center of each column is offset by the column radius from the clearance opening.
   const halfH = machine.tieBarClearanceH / 2;
   const halfV = machine.tieBarClearanceV / 2;
   const tieBarRadius = machine.tieBarDiameter / 2;
+  const tbCenterH = halfH + tieBarRadius;
+  const tbCenterV = halfV + tieBarRadius;
 
   const tieBarCenters: [number, number][] = [
-    [-halfH, -halfV],
-    [halfH, -halfV],
-    [halfH, halfV],
-    [-halfH, halfV]
+    [-tbCenterH, -tbCenterV],
+    [tbCenterH, -tbCenterV],
+    [tbCenterH, tbCenterV],
+    [-tbCenterH, tbCenterV]
   ];
-
-  // Platen Z boundaries
-  const fixedPlatenZ = die.fixedDieOffsetZ - 100;
-  const movablePlatenZ = die.movableDieOffsetZ + 100;
 
   for (const wp of waypoints) {
     const fk = forwardKinematics(wp.jointAnglesDeg || [0, 0, 0, 0, 0, 0], robotSpec);
@@ -48,6 +48,7 @@ export function runCollisionAudit(
       for (let tbIdx = 0; tbIdx < tieBarCenters.length; tbIdx++) {
         const [tbX, tbY] = tieBarCenters[tbIdx];
         const distXY = Math.hypot(pt.pos[0] - tbX, pt.pos[1] - tbY);
+        // Signed clearance: positive = clearance, zero = contact, negative = penetration
         const clearance = distXY - (tieBarRadius + pt.radius);
 
         if (clearance < minClearance) {
@@ -76,52 +77,74 @@ export function runCollisionAudit(
         }
       }
 
-      // 2. Check collision with Fixed Platen / Die Block
-      const distToFixedDie = pt.pos[2] - (die.fixedDieOffsetZ + pt.radius);
-      if (distToFixedDie < -20) {
-        hasCollision = true;
-        collisionPairs.push({
-          partA: pt.name,
-          partB: 'Fixed Die Steel Face',
-          clearanceMm: Math.round(distToFixedDie * 10) / 10,
-          waypointIndex: wp.index,
-          location: pt.pos,
-          severity: 'danger'
-        });
-      } else if (distToFixedDie < 40 && distToFixedDie >= -20) {
-        if (distToFixedDie < minClearance) minClearance = distToFixedDie;
-        collisionPairs.push({
-          partA: pt.name,
-          partB: 'Fixed Die Clearance Margin',
-          clearanceMm: Math.round(distToFixedDie * 10) / 10,
-          waypointIndex: wp.index,
-          location: pt.pos,
-          severity: 'warning'
-        });
-      }
+      // Check if point is within XY projected footprint of die and platen
+      const inDieXY = Math.abs(pt.pos[0]) <= (die.dimensions.width / 2 + pt.radius) &&
+                      Math.abs(pt.pos[1]) <= (die.dimensions.height / 2 + pt.radius);
+      const inPlatenXY = Math.abs(pt.pos[0]) <= (machine.platenWidth / 2 + pt.radius) &&
+                         Math.abs(pt.pos[1]) <= (machine.platenHeight / 2 + pt.radius);
 
-      // 3. Check collision with Movable Die Block
-      const distToMovableDie = (die.movableDieOffsetZ - pt.radius) - pt.pos[2];
-      if (distToMovableDie < -20) {
-        hasCollision = true;
-        collisionPairs.push({
-          partA: pt.name,
-          partB: 'Movable Die Core Face',
-          clearanceMm: Math.round(distToMovableDie * 10) / 10,
-          waypointIndex: wp.index,
-          location: pt.pos,
-          severity: 'danger'
-        });
-      } else if (distToMovableDie < 40 && distToMovableDie >= -20) {
-        if (distToMovableDie < minClearance) minClearance = distToMovableDie;
-        collisionPairs.push({
-          partA: pt.name,
-          partB: 'Movable Die Clearance Margin',
-          clearanceMm: Math.round(distToMovableDie * 10) / 10,
-          waypointIndex: wp.index,
-          location: pt.pos,
-          severity: 'warning'
-        });
+      if (inDieXY || inPlatenXY) {
+        // 2. Check collision with Fixed Platen / Die Block
+        // Fixed parting surface is at die.fixedDieOffsetZ.
+        // Closest point of robot sphere to fixed surface is pt.pos[2] - pt.radius.
+        // Signed clearance: positive = clearance, zero = contact, negative = penetration.
+        const distToFixedDie = pt.pos[2] - pt.radius - die.fixedDieOffsetZ;
+
+        if (distToFixedDie < minClearance) {
+          minClearance = distToFixedDie;
+        }
+
+        if (distToFixedDie < 0) {
+          hasCollision = true;
+          collisionPairs.push({
+            partA: pt.name,
+            partB: inDieXY ? 'Fixed Die Steel Face' : 'Fixed Platen Face',
+            clearanceMm: Math.round(distToFixedDie * 10) / 10,
+            waypointIndex: wp.index,
+            location: pt.pos,
+            severity: 'danger'
+          });
+        } else if (distToFixedDie < 45) {
+          collisionPairs.push({
+            partA: pt.name,
+            partB: inDieXY ? 'Fixed Die Clearance Margin' : 'Fixed Platen Margin',
+            clearanceMm: Math.round(distToFixedDie * 10) / 10,
+            waypointIndex: wp.index,
+            location: pt.pos,
+            severity: 'warning'
+          });
+        }
+
+        // 3. Check collision with Movable Die Block
+        // Movable parting surface is at die.movableDieOffsetZ.
+        // Closest point of robot sphere to movable surface is pt.pos[2] + pt.radius.
+        // Signed clearance: positive = clearance, zero = contact, negative = penetration.
+        const distToMovableDie = die.movableDieOffsetZ - (pt.pos[2] + pt.radius);
+
+        if (distToMovableDie < minClearance) {
+          minClearance = distToMovableDie;
+        }
+
+        if (distToMovableDie < 0) {
+          hasCollision = true;
+          collisionPairs.push({
+            partA: pt.name,
+            partB: inDieXY ? 'Movable Die Core Face' : 'Movable Platen Face',
+            clearanceMm: Math.round(distToMovableDie * 10) / 10,
+            waypointIndex: wp.index,
+            location: pt.pos,
+            severity: 'danger'
+          });
+        } else if (distToMovableDie < 45) {
+          collisionPairs.push({
+            partA: pt.name,
+            partB: inDieXY ? 'Movable Die Clearance Margin' : 'Movable Platen Margin',
+            clearanceMm: Math.round(distToMovableDie * 10) / 10,
+            waypointIndex: wp.index,
+            location: pt.pos,
+            severity: 'warning'
+          });
+        }
       }
     }
   }
@@ -129,7 +152,7 @@ export function runCollisionAudit(
   return {
     hasCollision,
     totalInterferences: collisionPairs.filter(p => p.severity === 'danger').length,
-    minClearanceDistanceMm: Math.max(0, Math.round(minClearance * 10) / 10),
+    minClearanceDistanceMm: Math.round(minClearance * 10) / 10,
     collisionPairs,
     isSafeToExecute: !hasCollision
   };

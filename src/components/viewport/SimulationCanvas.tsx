@@ -189,7 +189,7 @@ export const SimulationCanvas: React.FC = () => {
     const coneLength = 260;
     const coneGeo = new THREE.ConeGeometry(coneRadius, coneLength, 28, 1, true);
     coneGeo.translate(0, -coneLength / 2, 0);
-    coneGeo.rotateX(Math.PI / 2);
+    coneGeo.rotateX(-Math.PI / 2);
 
     const coneMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
@@ -615,32 +615,26 @@ export const SimulationCanvas: React.FC = () => {
 
         // Compute physical nozzle pointing vector from TCP transform matrix
         const targetFace = activeWp.targetFace;
-        // Dual-sided manifold: Fixed die nozzle is local -Z, Movable die nozzle is local +Z
-        const localNozzleZ = targetFace === 'MOVABLE_DIE' ? 1 : -1;
 
-        let sprayDir = new THREE.Vector3(0, 0, localNozzleZ);
+        let sprayDir = new THREE.Vector3(0, 0, targetFace === 'MOVABLE_DIE' ? 1 : -1);
         if (fk.tcpMatrix && fk.tcpMatrix.length === 16) {
           const m = fk.tcpMatrix;
-          const m4 = new THREE.Matrix4().set(
-            m[0], m[1], m[2], m[3],
-            m[4], m[5], m[6], m[7],
-            m[8], m[9], m[10], m[11],
-            m[12], m[13], m[14], m[15]
-          );
-          const pos = new THREE.Vector3();
-          const quat = new THREE.Quaternion();
-          const scl = new THREE.Vector3();
-          m4.decompose(pos, quat, scl);
+          // Local Z axis in world coordinates: (m[2], m[6], m[10])
+          sprayDir.set(m[2], m[6], m[10]);
 
-          // Apply physical tool orientation
-          sprayDir.applyQuaternion(quat);
+          // Align active tool nozzle with target die face
+          if (targetFace === 'FIXED_DIE') {
+            if (sprayDir.z > 0) sprayDir.negate();
+          } else if (targetFace === 'MOVABLE_DIE') {
+            if (sprayDir.z < 0) sprayDir.negate();
+          }
         }
 
         // Normalize direction vector
         if (sprayDir.lengthSq() > 0.001) {
           sprayDir.normalize();
         } else {
-          sprayDir.set(0, 0, localNozzleZ);
+          sprayDir.set(0, 0, targetFace === 'MOVABLE_DIE' ? 1 : -1);
         }
 
         currentSprayDirRef.current.copy(sprayDir);

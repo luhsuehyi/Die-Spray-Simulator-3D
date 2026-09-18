@@ -72,9 +72,19 @@ export const CollisionAuditModal: React.FC = () => {
 
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
             <div className="text-[11px] text-slate-400">Minimum Clearance Margin</div>
-            <div className="text-base font-bold text-blue-400 font-mono mt-1 flex items-center gap-1">
+            <div className={`text-base font-bold font-mono mt-1 flex items-center gap-1 ${
+              collisionResult.minClearanceDistanceMm < 0
+                ? 'text-rose-400'
+                : collisionResult.minClearanceDistanceMm < 60
+                ? 'text-amber-400'
+                : 'text-blue-400'
+            }`}>
               <Ruler className="w-4 h-4" />
-              {collisionResult.minClearanceDistanceMm} mm
+              {collisionResult.minClearanceDistanceMm < 0
+                ? `${collisionResult.minClearanceDistanceMm} mm (Penetration)`
+                : collisionResult.minClearanceDistanceMm === 0
+                ? '0.0 mm (Contact)'
+                : `+${collisionResult.minClearanceDistanceMm} mm`}
             </div>
           </div>
 

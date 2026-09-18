@@ -363,6 +363,18 @@ function emitChange() {
 let playbackRafId: number | null = null;
 let lastPlaybackTimestamp: number | null = null;
 
+let cachedWaypointsRef: Waypoint[] | null = null;
+let cachedTrajectoryPlan: TrajectoryPlan | null = null;
+
+export function getCachedTrajectoryPlan(waypoints: Waypoint[]): TrajectoryPlan {
+  if (cachedTrajectoryPlan && cachedWaypointsRef === waypoints) {
+    return cachedTrajectoryPlan;
+  }
+  cachedWaypointsRef = waypoints;
+  cachedTrajectoryPlan = calculateTrajectorySegments(waypoints);
+  return cachedTrajectoryPlan;
+}
+
 function runPlaybackTick(now: number) {
   if (!storeState.isPlaying) {
     playbackRafId = null;
@@ -372,7 +384,7 @@ function runPlaybackTick(now: number) {
 
   if (lastPlaybackTimestamp !== null) {
     const dt = Math.min(0.1, (now - lastPlaybackTimestamp) / 1000);
-    const plan = calculateTrajectorySegments(storeState.waypoints);
+    const plan = getCachedTrajectoryPlan(storeState.waypoints);
     const totalDuration = plan.totalDurationSec || 10;
     const nextTime = storeState.currentTimeSec + dt * storeState.playbackSpeed;
 
@@ -996,9 +1008,9 @@ export function useSimulationStore(): SimulationStore {
     emitChange();
   }, []);
 
-  // Compute trajectory plan
+  // Compute trajectory plan using cached calculation
   const trajectoryPlan = useMemo(() => {
-    return calculateTrajectorySegments(storeState.waypoints);
+    return getCachedTrajectoryPlan(storeState.waypoints);
   }, [storeState.waypoints]);
 
   // Determine current active waypoint and position based on currentTimeSec

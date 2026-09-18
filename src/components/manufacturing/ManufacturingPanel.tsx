@@ -760,9 +760,15 @@ export const ManufacturingPanel: React.FC = () => {
           <div className="bg-slate-950/60 border border-slate-800 p-1.5 rounded-lg">
             <span className="text-[9px] text-slate-400 block">Min Clearance</span>
             <span className={`text-xs font-bold font-mono ${
-              collisionResult.minClearanceDistanceMm > 100 ? 'text-emerald-400' : 'text-rose-400'
+              collisionResult.minClearanceDistanceMm < 0
+                ? 'text-rose-400'
+                : collisionResult.minClearanceDistanceMm > 100
+                ? 'text-emerald-400'
+                : 'text-amber-400'
             }`}>
-              {Math.round(collisionResult.minClearanceDistanceMm)}mm
+              {collisionResult.minClearanceDistanceMm < 0
+                ? `${Math.round(collisionResult.minClearanceDistanceMm)}mm`
+                : `+${Math.round(collisionResult.minClearanceDistanceMm)}mm`}
             </span>
           </div>
         </div>

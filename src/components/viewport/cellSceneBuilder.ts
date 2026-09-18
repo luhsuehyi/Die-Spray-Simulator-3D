@@ -148,11 +148,14 @@ export function buildToyoMachine(
   const tbGeo = new THREE.CylinderGeometry(tbRadius, tbRadius, tbTotalLength, 24);
   tbGeo.rotateX(Math.PI / 2);
 
+  const tbCenterH = halfH + tbRadius;
+  const tbCenterV = halfV + tbRadius;
+
   const corners: [number, number][] = [
-    [-halfH, -halfV],
-    [halfH, -halfV],
-    [halfH, halfV],
-    [-halfH, halfV]
+    [-tbCenterH, -tbCenterV],
+    [tbCenterH, -tbCenterV],
+    [tbCenterH, tbCenterV],
+    [-tbCenterH, tbCenterV]
   ];
 
   corners.forEach(([tx, ty]) => {

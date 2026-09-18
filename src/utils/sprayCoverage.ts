@@ -1,6 +1,7 @@
 import { SurfaceCell } from '../types/die';
 import { Waypoint, TrajectorySegment } from '../types/path';
 import { SprayPhysicsParams, SprayCoverageStats } from '../types/spray';
+import { Matrix4Utils } from './kinematics/matrix4';
 
 export const DEFAULT_SPRAY_PHYSICS: SprayPhysicsParams = {
   dilutionRatio: 80, // 1:80 water to concentrate
@@ -72,6 +73,39 @@ export function simulateCoverage(
       const coneHalfAngleRad = (fanAngle / 2) * (Math.PI / 180);
       const sprayTargetFace = wpEnd.targetFace;
 
+      // Compute actual physical tool/nozzle orientation vector from interpolated TCP orientation
+      const prx = (wpStart.rx ?? 0) + ((wpEnd.rx ?? 0) - (wpStart.rx ?? 0)) * alpha;
+      const pry = (wpStart.ry ?? 0) + ((wpEnd.ry ?? 0) - (wpStart.ry ?? 0)) * alpha;
+      const prz = (wpStart.rz ?? 0) + ((wpEnd.rz ?? 0) - (wpStart.rz ?? 0)) * alpha;
+
+      const rot = Matrix4Utils.fromEulerDeg(prx, pry, prz);
+      // Tool Z-axis in world frame: column 2 of rotation matrix (indices 2, 6, 10 in row-major)
+      let dirX = rot[2];
+      let dirY = rot[6];
+      let dirZ = rot[10];
+
+      // Align active nozzle direction with target die face
+      if (sprayTargetFace === 'FIXED_DIE') {
+        // Must point towards fixed die (-Z direction)
+        if (dirZ > 0) {
+          dirX = -dirX;
+          dirY = -dirY;
+          dirZ = -dirZ;
+        }
+      } else if (sprayTargetFace === 'MOVABLE_DIE') {
+        // Must point towards movable die (+Z direction)
+        if (dirZ < 0) {
+          dirX = -dirX;
+          dirY = -dirY;
+          dirZ = -dirZ;
+        }
+      }
+
+      const dirLen = Math.hypot(dirX, dirY, dirZ) || 1;
+      dirX /= dirLen;
+      dirY /= dirLen;
+      dirZ /= dirLen;
+
       const currentLubeMl = isSpraying ? flowRate * dt : 0;
       totalLubeAppliedMl += currentLubeMl;
 
@@ -87,20 +121,20 @@ export function simulateCoverage(
         const vz = cell.z - pz;
         const distance = Math.hypot(vx, vy, vz);
 
-        // Typical standoff distance range 80mm - 350mm
+        // Typical standoff distance range 20mm - 380mm
         if (distance > 380 || distance < 20) continue;
 
-        // Angle between nozzle axis and cell vector
-        // In mold coordinates, fixed die is at -Z (nozzle points -Z), movable is at +Z
-        const nozzleDirZ = cell.targetSurface === 'fixed' ? -1 : 1;
-        const cosAngle = (vz * nozzleDirZ) / (distance || 1);
+        // Angle between nozzle pointing axis and cell vector
+        const dot = vx * dirX + vy * dirY + vz * dirZ;
+        const cosAngle = dot / distance;
 
         if (cosAngle < Math.cos(coneHalfAngleRad)) {
           continue; // outside spray cone
         }
 
-        // Gaussian spray intensity
-        const normalizedRadialDist = Math.tan(Math.acos(Math.max(-1, Math.min(1, cosAngle)))) / Math.tan(coneHalfAngleRad);
+        // True radial angular deviation from cone axis
+        const angleFromAxis = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+        const normalizedRadialDist = Math.sin(angleFromAxis) / Math.sin(coneHalfAngleRad);
         const intensity = Math.exp(-2.2 * normalizedRadialDist * normalizedRadialDist);
 
         if (isSpraying && currentLubeMl > 0) {

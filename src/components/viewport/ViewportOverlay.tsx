@@ -222,17 +222,17 @@ export const ViewportOverlay: React.FC = () => {
             {collisionResult.hasCollision ? (
               <>
                 <AlertTriangle className="w-4 h-4 text-red-400 animate-bounce" />
-                <span>Interference ({collisionResult.totalInterferences})</span>
+                <span>Interference: {collisionResult.minClearanceDistanceMm < 0 ? `${collisionResult.minClearanceDistanceMm}mm` : `${collisionResult.totalInterferences} pts`}</span>
               </>
             ) : collisionResult.minClearanceDistanceMm < 60 ? (
               <>
                 <AlertTriangle className="w-4 h-4 text-amber-400" />
-                <span>Clearance: {collisionResult.minClearanceDistanceMm}mm</span>
+                <span>Clearance: +{collisionResult.minClearanceDistanceMm}mm</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Clearance: {collisionResult.minClearanceDistanceMm}mm</span>
+                <span>Clearance: +{collisionResult.minClearanceDistanceMm}mm</span>
               </>
             )}
           </div>
