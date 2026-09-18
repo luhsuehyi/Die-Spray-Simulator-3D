@@ -1,0 +1,8 @@
+{
+  "name": "Remix Die Spray Simulator 3D",
+  "description": "Industrial 3D simulation and trajectory optimization platform for die casting spray robots, featuring collision audit, coverage heatmaps, kinematics, and code export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
