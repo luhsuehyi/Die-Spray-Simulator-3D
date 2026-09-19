@@ -799,29 +799,62 @@ export function buildRobotMountStructure(
   const base = basePos || (robot.baseOffset ? [robot.baseOffset[0], robot.baseOffset[1], robot.baseOffset[2]] as [number, number, number] : [0, 1600, 0]);
 
   if (mountType === 'top' || mountType === 'top_machine_mount') {
+    const platenThick = Math.max(180, Math.min(320, machine.platenWidth * 0.18));
+    const platenH = machine.platenHeight;
+    const shelfTopY = platenH / 2 + 45;
+
     if (mountConfig.topMountStyle === 'platen_direct') {
-      // --- WOLLIN PLATEN DIRECT TOP DECK (Heavy welded structural plate bolted to platen top) ---
-      const deckWidth = machine.platenWidth * 0.62;
+      // --- WOLLIN PLATEN DIRECT TOP DECK (Rigidly bolted to stationary fixed platen top) ---
+      const deckWidth = machine.platenWidth * 0.65;
+      const deckDepth = Math.max(480, platenThick * 1.6);
+      const deckThick = 45;
+
+      // Machined Steel Riser Turret with bolt flange (Interface between robot base turntable and deck)
+      const riserTurretH = 85;
+      const riserTurret = new THREE.Mesh(
+        new THREE.CylinderGeometry(240, 270, riserTurretH, 32),
+        MAT.jointDark
+      );
+      riserTurret.position.set(base[0], base[1] + riserTurretH / 2, base[2]);
+      riserTurret.castShadow = true;
+      group.add(riserTurret);
+
+      // Heavy welded structural mounting deck plate (Above riser turret, supporting dosing unit and conduits)
+      const deckY = base[1] + riserTurretH + deckThick / 2;
       const mountDeck = new THREE.Mesh(
-        new THREE.BoxGeometry(deckWidth, 45, 460),
+        new THREE.BoxGeometry(deckWidth, deckThick, deckDepth),
         MAT.toyoGrey
       );
-      mountDeck.position.set(base[0], base[1] - 40, base[2]);
+      mountDeck.position.set(base[0], deckY, base[2]);
       mountDeck.castShadow = true;
       group.add(mountDeck);
 
-      // Machined Steel Riser Turret with bolt flange
-      const riserTurret = new THREE.Mesh(
-        new THREE.CylinderGeometry(240, 270, 85, 32),
-        MAT.jointDark
-      );
-      riserTurret.position.set(base[0], base[1] + 42, base[2]);
-      group.add(riserTurret);
-
-      // Gusset Rib Braces
+      // Heavy Structural Support Stanchions anchored directly onto the fixed platen top shelf
+      const deckBottomY = base[1] + riserTurretH;
+      const stanchionH = Math.max(25, deckBottomY - shelfTopY);
+      const stanchionY = shelfTopY + stanchionH / 2;
       [-1, 1].forEach(side => {
-        const gusset = new THREE.Mesh(new THREE.BoxGeometry(28, 150, 160), MAT.toyoGrey);
-        gusset.position.set(base[0] + side * (deckWidth * 0.38), base[1] - 110, base[2] - 70);
+        const stanchion = new THREE.Mesh(
+          new THREE.BoxGeometry(110, stanchionH, platenThick * 1.1),
+          MAT.toyoGrey
+        );
+        stanchion.position.set(base[0] + side * (deckWidth * 0.35), stanchionY, base[2]);
+        stanchion.castShadow = true;
+        group.add(stanchion);
+
+        // Bolting clamp flanges with M30 high-tensile hardware
+        const boltFlange = new THREE.Mesh(
+          new THREE.BoxGeometry(140, 22, platenThick * 1.25),
+          MAT.jointDark
+        );
+        boltFlange.position.set(base[0] + side * (deckWidth * 0.35), shelfTopY + 11, base[2]);
+        group.add(boltFlange);
+      });
+
+      // Gusset Rib Braces into rear reinforcement ribs of stationary fixed platen (-Z side)
+      [-1, 1].forEach(side => {
+        const gusset = new THREE.Mesh(new THREE.BoxGeometry(32, 180, 180), MAT.toyoGrey);
+        gusset.position.set(base[0] + side * (deckWidth * 0.42), deckY - 90, base[2] - platenThick * 0.55);
         group.add(gusset);
       });
 
@@ -830,8 +863,8 @@ export function buildRobotMountStructure(
       const cabinetH = 680;
       const cabinetD = 220;
       const cabX = base[0] + 360;
-      const cabY = base[1] + cabinetH / 2 - 20;
-      const cabZ = base[2] - 60;
+      const cabY = deckY + deckThick / 2 + cabinetH / 2;
+      const cabZ = base[2] - 40;
 
       const mediaCab = new THREE.Mesh(new THREE.BoxGeometry(cabinetW, cabinetH, cabinetD), MAT.cabinetGrey);
       mediaCab.position.set(cabX, cabY, cabZ);
@@ -851,10 +884,10 @@ export function buildRobotMountStructure(
         group.add(gauge);
       });
     } else {
-      // Overhead Gantry Bridge Frame
+      // Overhead Gantry Bridge Frame (Stationary structure anchored to floor & frame)
       const gantryW = machine.platenWidth * 1.35;
       const gantryBeam = new THREE.Mesh(
-        new THREE.BoxGeometry(gantryW, 150, 380),
+        new THREE.BoxGeometry(gantryW, 150, 420),
         MAT.toyoGrey
       );
       gantryBeam.position.set(0, base[1] + 75, base[2]);
@@ -869,6 +902,14 @@ export function buildRobotMountStructure(
         );
         pillar.position.set(side * (gantryW * 0.48), -850 + pillarH / 2, base[2]);
         group.add(pillar);
+
+        // Foundation foot plate
+        const foot = new THREE.Mesh(
+          new THREE.BoxGeometry(300, 30, 300),
+          MAT.jointDark
+        );
+        foot.position.set(side * (gantryW * 0.48), -850 + 15, base[2]);
+        group.add(foot);
       });
     }
   } else if (mountType === 'floor') {

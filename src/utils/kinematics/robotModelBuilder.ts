@@ -26,13 +26,19 @@ export function buildMountTransform(
   mountConfig?: RobotMountConfig
 ): RobotMountingTransform {
   const mountType = mountConfig?.type || spec.mountOrientation || 'top';
-  const pos: Vector3Tuple = mountConfig
-    ? [
-        mountType === 'top' ? mountConfig.lateralMm || 0 : -mountConfig.distanceMm,
-        mountConfig.heightMm,
-        mountType === 'top' ? -mountConfig.distanceMm : mountConfig.lateralMm || 0
-      ]
-    : [...spec.baseOffset];
+  const hasSpecOffset = spec.baseOffset && (spec.baseOffset[0] !== 0 || spec.baseOffset[1] !== 0 || spec.baseOffset[2] !== 0);
+
+  // Authoritative Base World Position [X, Y, Z]
+  // In HPDC cells, the robot base is physically stationary relative to the machine frame.
+  const pos: Vector3Tuple = hasSpecOffset
+    ? [spec.baseOffset[0], spec.baseOffset[1], spec.baseOffset[2]]
+    : mountConfig
+      ? [
+          mountType === 'top' ? (mountConfig.lateralMm || 0) : -(mountConfig.distanceMm || 0),
+          mountConfig.heightMm || 0,
+          mountType === 'top' ? (mountConfig.distanceMm !== undefined ? mountConfig.distanceMm : 0) : (mountConfig.lateralMm || 0)
+        ]
+      : [...spec.baseOffset];
 
   const rotDeg = mountConfig?.rotationDeg || 0;
   const psi = rotDeg * DEG2RAD;

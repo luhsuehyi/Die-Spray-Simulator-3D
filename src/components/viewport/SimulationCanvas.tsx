@@ -580,8 +580,11 @@ export const SimulationCanvas: React.FC = () => {
     const armGroup = robotArmGroupRef.current;
     if (!mountGroup || !armGroup) return;
 
-    // Build static pedestal / gantry / deck
-    buildRobotMountStructure(mountGroup, robotMountConfig, robot, machine);
+    // Perform forward kinematics to determine authoritative base anchor position
+    const fk = forwardKinematics(currentRobotPose.jointAnglesDeg, robot, tool, robotMountConfig);
+
+    // Build static pedestal / gantry / deck firmly anchored to machine frame at base position
+    buildRobotMountStructure(mountGroup, robotMountConfig, robot, machine, fk.jointPositions.base);
 
     // Recreate persistent 60FPS RobotArmRig
     if (armRigRef.current) {
@@ -589,9 +592,6 @@ export const SimulationCanvas: React.FC = () => {
       armRigRef.current = null;
     }
     armRigRef.current = createRobotArmRig(armGroup, robot, tool, robotMountConfig.type);
-
-    // Perform initial pose update
-    const fk = forwardKinematics(currentRobotPose.jointAnglesDeg, robot, tool, robotMountConfig);
     armRigRef.current.updatePose(fk.jointPositions, fk.tcpMatrix);
   }, [robot, tool, robotMountConfig, machine]);
 

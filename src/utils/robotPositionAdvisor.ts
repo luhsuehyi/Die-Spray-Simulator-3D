@@ -1,4 +1,4 @@
-import { RobotModelSpec, RobotMountType } from '../types/robot';
+import { RobotModelSpec, RobotMountConfig, RobotMountType } from '../types/robot';
 import { DieCastingMachine } from '../types/machine';
 import { DieModel } from '../types/die';
 import { Waypoint } from '../types/path';
@@ -42,10 +42,13 @@ export function evaluateRobotPositions(
   recommended: PositionCandidate;
   candidates: PositionCandidate[];
 } {
-  const topY = Math.max(1400, machine.platenHeight * 0.65 + 450);
+  const platenThick = Math.max(180, Math.min(320, machine.platenWidth * 0.18));
+  const fixedPlatenZ = die.fixedDieOffsetZ - platenThick / 2 - die.dimensions.depth / 2;
+  const topOfPlatenY = machine.platenHeight / 2 + 85;
+  const topY = Math.max(1450, machine.platenHeight * 0.65 + 450);
   const sideX = -(machine.platenWidth * 0.5 + 420);
   const oppSideX = (machine.platenWidth * 0.5 + 420);
-  const rearZ = die.fixedDieOffsetZ - 750;
+  const rearZ = fixedPlatenZ - 400;
 
   const rawCandidates: {
     id: string;
@@ -55,31 +58,31 @@ export function evaluateRobotPositions(
     description: string;
   }[] = [
     {
+      id: 'cand-top-platen',
+      mountType: 'top',
+      name: 'Top Mounted (Platen-Top Direct)',
+      baseOffset: [0, topOfPlatenY, fixedPlatenZ],
+      description: 'Bolted directly to the stationary fixed platen top shelf. The industry-standard compact HPDC configuration with zero floor footprint.'
+    },
+    {
       id: 'cand-top-center',
       mountType: 'top',
       name: 'Top Mounted (Overhead Gantry)',
-      baseOffset: [0, topY, 0],
-      description: 'Suspended from an overhead bridge frame above the die opening. Provides optimal vertical reach into deep cavities with zero tie-bar interference.'
+      baseOffset: [0, topY, fixedPlatenZ + platenThick * 0.5],
+      description: 'Suspended from a rigid overhead bridge frame anchored to the machine framework. Maximum vertical clearance for mold changing.'
     },
     {
       id: 'cand-side-operator',
       mountType: 'side',
-      name: 'Side Mounted (Pedestal Stand)',
-      baseOffset: [sideX, 150, 0],
-      description: 'Mounted beside the machine bed on a heavy-duty floor riser pedestal. Easy floor maintenance access, excellent reach into both fixed and moving platens.'
-    },
-    {
-      id: 'cand-side-opposite',
-      mountType: 'side',
-      name: 'Side Mounted (Service Side)',
-      baseOffset: [oppSideX, 150, 0],
-      description: 'Mounted on the rear service side opposite the operator door. Keeps the operator loading door completely clear.'
+      name: 'Side Mounted (Floor Pedestal)',
+      baseOffset: [sideX, 120, fixedPlatenZ + platenThick * 0.5],
+      description: 'Mounted beside the stationary machine bed on a heavy-duty pedestal stand. Excellent reach into both fixed and moving platens.'
     },
     {
       id: 'cand-rear-bracket',
       mountType: 'rear',
       name: 'Rear Shelf Mounted',
-      baseOffset: [0, 300, rearZ],
+      baseOffset: [0, 250, rearZ],
       description: 'Mounted on a reinforced shelf behind the fixed platen. Compact cell footprint, ideal for restricted factory aisles.'
     }
   ];
@@ -104,7 +107,14 @@ export function evaluateRobotPositions(
       : 100;
 
     // 2. Evaluate collisions
-    const audit = runCollisionAudit(waypoints, testSpec, machine, die);
+    const mountCfg: RobotMountConfig = {
+      type: cand.mountType,
+      heightMm: cand.baseOffset[1],
+      lateralMm: cand.baseOffset[0],
+      distanceMm: cand.baseOffset[2],
+      rotationDeg: 0
+    };
+    const audit = runCollisionAudit(waypoints, testSpec, machine, die, mountCfg);
     const minClearanceMm = Math.round(audit.minClearanceDistanceMm);
     const hasCollision = audit.hasCollision || minClearanceMm < 50;
 
@@ -192,8 +202,8 @@ export function diagnoseCellProblems(
   if (audit.hasCollision || audit.minClearanceDistanceMm < 80) {
     const isTop = robot.mountOrientation === 'top';
     const proposedOffset: [number, number, number] = isTop
-      ? [robot.baseOffset[0], robot.baseOffset[1] + 80, 0]
-      : [robot.baseOffset[0] < 0 ? robot.baseOffset[0] - 80 : robot.baseOffset[0] + 80, robot.baseOffset[1] + 50, 0];
+      ? [robot.baseOffset[0], robot.baseOffset[1] + 80, robot.baseOffset[2]]
+      : [robot.baseOffset[0] < 0 ? robot.baseOffset[0] - 80 : robot.baseOffset[0] + 80, robot.baseOffset[1] + 50, robot.baseOffset[2]];
 
     advices.push({
       issueType: 'collision',

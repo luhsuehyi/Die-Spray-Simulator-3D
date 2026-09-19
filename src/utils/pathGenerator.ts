@@ -87,7 +87,7 @@ export function generatePathFromIntent(
 
   // 1. HOME / PURGE: Safe starting position outside envelope
   const homePos: [number, number, number] = isTop
-    ? [0, robot.baseOffset[1] - 320, 0]
+    ? [robot.baseOffset[0], robot.baseOffset[1] - 320, robot.baseOffset[2] + 250]
     : [robot.baseOffset[0] * 0.82, 220, transitZ];
 
   waypoints.push({

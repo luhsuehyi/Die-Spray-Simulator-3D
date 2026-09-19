@@ -1,5 +1,5 @@
 import { Waypoint } from '../types/path';
-import { RobotModelSpec } from '../types/robot';
+import { RobotModelSpec, RobotMountConfig } from '../types/robot';
 import { DieCastingMachine } from '../types/machine';
 import { DieModel } from '../types/die';
 import { CollisionAuditResult } from '../types/spray';
@@ -9,7 +9,8 @@ export function runCollisionAudit(
   waypoints: Waypoint[],
   robotSpec: RobotModelSpec,
   machine: DieCastingMachine,
-  die: DieModel
+  die: DieModel,
+  mountConfig?: RobotMountConfig
 ): CollisionAuditResult {
   const collisionPairs: CollisionAuditResult['collisionPairs'] = [];
   let minClearance = 9999;
@@ -32,7 +33,7 @@ export function runCollisionAudit(
   ];
 
   for (const wp of waypoints) {
-    const fk = forwardKinematics(wp.jointAnglesDeg || [0, 0, 0, 0, 0, 0], robotSpec);
+    const fk = forwardKinematics(wp.jointAnglesDeg || [0, 0, 0, 0, 0, 0], robotSpec, undefined, mountConfig);
     const tcp = [wp.x, wp.y, wp.z] as [number, number, number];
     const wrist = fk.jointPositions.wristYaw;
     const elbow = fk.jointPositions.elbow;

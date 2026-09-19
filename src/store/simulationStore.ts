@@ -239,9 +239,9 @@ let globalStateListeners: (() => void)[] = [];
 const INITIAL_SCENARIOS: ScenarioItem[] = [
   {
     id: 'scen-top',
-    name: 'Scenario A: Top Mounted (Overhead Gantry)',
+    name: 'Scenario A: Top Mounted (Platen-Top Direct)',
     mountType: 'top',
-    baseOffset: [0, 1550, 0],
+    baseOffset: [0, 1040, -690],
     robotName: 'FANUC M-710iC/50',
     machineName: '1250T Heavy-Duty Die Casting Machine',
     coveragePercent: 96,
@@ -255,7 +255,7 @@ const INITIAL_SCENARIOS: ScenarioItem[] = [
     id: 'scen-side',
     name: 'Scenario B: Side Mounted (Floor Pedestal)',
     mountType: 'side',
-    baseOffset: [-1050, 120, 0],
+    baseOffset: [-1375, 120, -530],
     robotName: 'ABB IRB 4600-40',
     machineName: '1250T Heavy-Duty Die Casting Machine',
     coveragePercent: 92,
@@ -277,8 +277,8 @@ let storeState = {
     showDualRobots: false,
     hasMediaCabinet: true,
     hasDressPack: true,
-    distanceMm: 1550,
-    heightMm: 1550,
+    distanceMm: -690,
+    heightMm: 1040,
     lateralMm: 0,
     rotationDeg: 0
   },
@@ -309,7 +309,7 @@ let storeState = {
   machine: TOYO_DCM_FAMILY[6],
   robot: {
     ...ROBOT_PRESETS[0],
-    baseOffset: [0, 818, -160] as [number, number, number]
+    baseOffset: [0, 1040, -690] as [number, number, number]
   },
   die: DIE_PRESETS[0],
   tool: TOOL_DEFAULT,
@@ -445,24 +445,26 @@ export function useSimulationStore(): SimulationStore {
     const currentMachine = storeState.machine;
     const currentDie = storeState.die;
 
-    let newOffset: [number, number, number] = [0, 1550, 0];
+    const platenThick = Math.max(180, Math.min(320, currentMachine.platenWidth * 0.18));
+    const fixedPlatenZ = currentDie.fixedDieOffsetZ - platenThick / 2 - currentDie.dimensions.depth / 2;
+    const topOfPlatenY = currentMachine.platenHeight / 2 + 85;
+
+    let newOffset: [number, number, number] = [0, topOfPlatenY, fixedPlatenZ];
     if (type === 'top') {
       if (storeState.topMountStyle === 'platen_direct') {
-        const topOfPlatenY = currentMachine.platenHeight / 2 + 80;
-        const fixedPlatenZ = currentDie.fixedDieOffsetZ - 160;
         newOffset = [0, topOfPlatenY, fixedPlatenZ];
       } else {
-        newOffset = [0, Math.max(1400, currentMachine.platenHeight * 0.65 + 450), 0];
+        const gantryY = Math.max(1450, currentMachine.platenHeight * 0.65 + 450);
+        newOffset = [0, gantryY, fixedPlatenZ + platenThick * 0.5];
       }
     } else if (type === 'floor') {
       const floorX = -(currentMachine.platenWidth * 0.5 + 560);
       const floorY = -850 + 200;
-      const floorZ = (currentDie.fixedDieOffsetZ + currentDie.movableDieOffsetZ) / 2;
-      newOffset = [floorX, floorY, floorZ];
+      newOffset = [floorX, floorY, fixedPlatenZ + platenThick * 0.5];
     } else if (type === 'side') {
-      newOffset = [-(currentMachine.platenWidth * 0.5 + 420), 120, 0];
+      newOffset = [-(currentMachine.platenWidth * 0.5 + 420), 120, fixedPlatenZ + platenThick * 0.5];
     } else if (type === 'rear') {
-      newOffset = [0, 250, currentDie.fixedDieOffsetZ - 750];
+      newOffset = [0, 250, fixedPlatenZ - 400];
     } else if (type === 'custom') {
       newOffset = [...currentRobot.baseOffset];
     }
@@ -472,6 +474,13 @@ export function useSimulationStore(): SimulationStore {
       baseOffset: newOffset,
       mountOrientation: type
     };
+    storeState.robotMountConfig = {
+      ...storeState.robotMountConfig,
+      type,
+      lateralMm: newOffset[0],
+      heightMm: newOffset[1],
+      distanceMm: newOffset[2]
+    };
     emitChange();
   }, []);
 
@@ -479,32 +488,36 @@ export function useSimulationStore(): SimulationStore {
     const target = TOYO_DCM_FAMILY.find(m => m.clampingForceKn === kn) || TOYO_DCM_FAMILY[0];
     storeState.machine = target;
     const curMount = storeState.robotMountConfig.type;
+    const currentDie = storeState.die;
+    const platenThick = Math.max(180, Math.min(320, target.platenWidth * 0.18));
+    const fixedPlatenZ = currentDie.fixedDieOffsetZ - platenThick / 2 - currentDie.dimensions.depth / 2;
+    const topOfPlatenY = target.platenHeight / 2 + 85;
+
+    let newOffset: [number, number, number] = [0, topOfPlatenY, fixedPlatenZ];
     if (curMount === 'top') {
-      const topOfPlatenY = target.platenHeight / 2 + 80;
-      const fixedPlatenZ = storeState.die.fixedDieOffsetZ - 160;
-      storeState.robot = {
-        ...storeState.robot,
-        baseOffset: [0, topOfPlatenY, fixedPlatenZ]
-      };
-      storeState.robotMountConfig.heightMm = topOfPlatenY;
-      storeState.robotMountConfig.distanceMm = fixedPlatenZ;
+      if (storeState.topMountStyle === 'platen_direct') {
+        newOffset = [0, topOfPlatenY, fixedPlatenZ];
+      } else {
+        newOffset = [0, Math.max(1450, target.platenHeight * 0.65 + 450), fixedPlatenZ + platenThick * 0.5];
+      }
     } else if (curMount === 'floor') {
-      const floorX = -(target.platenWidth * 0.5 + 560);
-      const floorY = -850 + 200;
-      const floorZ = (storeState.die.fixedDieOffsetZ + storeState.die.movableDieOffsetZ) / 2;
-      storeState.robot = {
-        ...storeState.robot,
-        baseOffset: [floorX, floorY, floorZ]
-      };
+      newOffset = [-(target.platenWidth * 0.5 + 560), -850 + 200, fixedPlatenZ + platenThick * 0.5];
     } else if (curMount === 'side') {
-      const sideX = -(target.platenWidth * 0.5 + 380);
-      const sideY = 120;
-      const sideZ = (storeState.die.fixedDieOffsetZ + storeState.die.movableDieOffsetZ) / 2;
-      storeState.robot = {
-        ...storeState.robot,
-        baseOffset: [sideX, sideY, sideZ]
-      };
+      newOffset = [-(target.platenWidth * 0.5 + 420), 120, fixedPlatenZ + platenThick * 0.5];
+    } else if (curMount === 'rear') {
+      newOffset = [0, 250, fixedPlatenZ - 400];
     }
+
+    storeState.robot = {
+      ...storeState.robot,
+      baseOffset: newOffset
+    };
+    storeState.robotMountConfig = {
+      ...storeState.robotMountConfig,
+      lateralMm: newOffset[0],
+      heightMm: newOffset[1],
+      distanceMm: newOffset[2]
+    };
     emitChange();
   }, []);
 
@@ -590,26 +603,31 @@ export function useSimulationStore(): SimulationStore {
     storeState.robotMountConfig.topMountStyle = style;
     const currentMachine = storeState.machine;
     const currentDie = storeState.die;
+    const platenThick = Math.max(180, Math.min(320, currentMachine.platenWidth * 0.18));
+    const fixedPlatenZ = currentDie.fixedDieOffsetZ - platenThick / 2 - currentDie.dimensions.depth / 2;
+    const topOfPlatenY = currentMachine.platenHeight / 2 + 85;
+
+    let newOffset: [number, number, number];
     if (style === 'platen_direct') {
-      const topOfPlatenY = currentMachine.platenHeight / 2 + 80;
-      const fixedPlatenZ = currentDie.fixedDieOffsetZ - 180;
-      storeState.robot = {
-        ...storeState.robot,
-        baseOffset: [0, topOfPlatenY, fixedPlatenZ],
-        mountOrientation: 'top'
-      };
-      storeState.robotMountConfig.heightMm = topOfPlatenY;
-      storeState.robotMountConfig.distanceMm = fixedPlatenZ;
+      newOffset = [0, topOfPlatenY, fixedPlatenZ];
     } else {
-      const gantryY = Math.max(1400, currentMachine.platenHeight * 0.65 + 450);
-      storeState.robot = {
-        ...storeState.robot,
-        baseOffset: [0, gantryY, 0],
-        mountOrientation: 'top'
-      };
-      storeState.robotMountConfig.heightMm = gantryY;
-      storeState.robotMountConfig.distanceMm = 0;
+      const gantryY = Math.max(1450, currentMachine.platenHeight * 0.65 + 450);
+      newOffset = [0, gantryY, fixedPlatenZ + platenThick * 0.5];
     }
+
+    storeState.robot = {
+      ...storeState.robot,
+      baseOffset: newOffset,
+      mountOrientation: 'top'
+    };
+    storeState.robotMountConfig = {
+      ...storeState.robotMountConfig,
+      type: 'top',
+      topMountStyle: style,
+      lateralMm: newOffset[0],
+      heightMm: newOffset[1],
+      distanceMm: newOffset[2]
+    };
     emitChange();
   }, []);
 
@@ -622,8 +640,10 @@ export function useSimulationStore(): SimulationStore {
   const applyWollinTopMountPreset = useCallback(() => {
     const currentMachine = storeState.machine;
     const currentDie = storeState.die;
-    const topOfPlatenY = currentMachine.platenHeight / 2 + 80;
-    const fixedPlatenZ = currentDie.fixedDieOffsetZ - 180;
+    const platenThick = Math.max(180, Math.min(320, currentMachine.platenWidth * 0.18));
+    const fixedPlatenZ = currentDie.fixedDieOffsetZ - platenThick / 2 - currentDie.dimensions.depth / 2;
+    const topOfPlatenY = currentMachine.platenHeight / 2 + 85;
+    const newOffset: [number, number, number] = [0, topOfPlatenY, fixedPlatenZ];
 
     storeState.robotMountConfig = {
       ...storeState.robotMountConfig,
@@ -632,16 +652,16 @@ export function useSimulationStore(): SimulationStore {
       showDualRobots: true,
       hasMediaCabinet: true,
       hasDressPack: true,
-      heightMm: topOfPlatenY,
-      distanceMm: fixedPlatenZ,
-      lateralMm: 0,
+      heightMm: newOffset[1],
+      distanceMm: newOffset[2],
+      lateralMm: newOffset[0],
       rotationDeg: 0
     };
     storeState.topMountStyle = 'platen_direct';
     storeState.showDualRobots = true;
     storeState.robot = {
       ...storeState.robot,
-      baseOffset: [0, topOfPlatenY, fixedPlatenZ],
+      baseOffset: newOffset,
       mountOrientation: 'top'
     };
     storeState.tool = {
@@ -660,22 +680,10 @@ export function useSimulationStore(): SimulationStore {
       ...patch
     };
     const { distanceMm, heightMm, lateralMm } = storeState.robotMountConfig;
-    const type = storeState.robotMountConfig.type;
-    let newOffset: [number, number, number] = [...storeState.robot.baseOffset];
-
-    if (type === 'top') {
-      newOffset = [lateralMm, heightMm, 0];
-    } else if (type === 'side') {
-      newOffset = [-distanceMm, heightMm, lateralMm];
-    } else if (type === 'rear') {
-      newOffset = [lateralMm, heightMm, -distanceMm];
-    } else {
-      newOffset = [lateralMm, heightMm, -distanceMm];
-    }
 
     storeState.robot = {
       ...storeState.robot,
-      baseOffset: newOffset
+      baseOffset: [lateralMm, heightMm, distanceMm]
     };
     emitChange();
   }, []);
@@ -716,14 +724,9 @@ export function useSimulationStore(): SimulationStore {
       ...storeState.robot,
       baseOffset: newBaseOffset
     };
-    if (storeState.robotMountConfig.type === 'top') {
-      storeState.robotMountConfig.heightMm = newBaseOffset[1];
-      storeState.robotMountConfig.lateralMm = newBaseOffset[0];
-    } else {
-      storeState.robotMountConfig.distanceMm = Math.abs(newBaseOffset[0]);
-      storeState.robotMountConfig.heightMm = newBaseOffset[1];
-      storeState.robotMountConfig.lateralMm = newBaseOffset[2];
-    }
+    storeState.robotMountConfig.lateralMm = newBaseOffset[0];
+    storeState.robotMountConfig.heightMm = newBaseOffset[1];
+    storeState.robotMountConfig.distanceMm = newBaseOffset[2];
     emitChange();
   }, []);
 
@@ -806,7 +809,13 @@ export function useSimulationStore(): SimulationStore {
         baseOffset: actionable.proposedBaseOffset,
         mountOrientation: actionable.proposedMountType
       };
-      storeState.robotMountConfig.type = actionable.proposedMountType;
+      storeState.robotMountConfig = {
+        ...storeState.robotMountConfig,
+        type: actionable.proposedMountType,
+        lateralMm: actionable.proposedBaseOffset[0],
+        heightMm: actionable.proposedBaseOffset[1],
+        distanceMm: actionable.proposedBaseOffset[2]
+      };
     }
     emitChange();
   }, []);
@@ -817,7 +826,13 @@ export function useSimulationStore(): SimulationStore {
       baseOffset: cand.baseOffset,
       mountOrientation: cand.mountType
     };
-    storeState.robotMountConfig.type = cand.mountType;
+    storeState.robotMountConfig = {
+      ...storeState.robotMountConfig,
+      type: cand.mountType,
+      lateralMm: cand.baseOffset[0],
+      heightMm: cand.baseOffset[1],
+      distanceMm: cand.baseOffset[2]
+    };
     storeState.isBestPositionAdvisorOpen = false;
     emitChange();
   }, []);
@@ -1100,9 +1115,10 @@ export function useSimulationStore(): SimulationStore {
       storeState.waypoints,
       storeState.robot,
       storeState.machine,
-      storeState.die
+      storeState.die,
+      storeState.robotMountConfig
     );
-  }, [storeState.waypoints, storeState.robot, storeState.machine, storeState.die]);
+  }, [storeState.waypoints, storeState.robot, storeState.machine, storeState.die, storeState.robotMountConfig]);
 
   const stepForward = useCallback(() => {
     const nextIdx = Math.min(storeState.waypoints.length - 1, activeWaypointIndex + 1);
