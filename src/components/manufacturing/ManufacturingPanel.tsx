@@ -92,7 +92,7 @@ export const ManufacturingPanel: React.FC = () => {
   const isHealthy = actionableProblems.length === 0;
 
   return (
-    <aside className="w-96 h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shrink-0 text-slate-200 select-none overflow-y-auto divide-y divide-slate-800 scrollbar-thin">
+    <aside className="w-80 h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shrink-0 text-slate-200 select-none overflow-y-auto divide-y divide-slate-800 scrollbar-thin">
       {/* 1. Header Banner */}
       <div className="p-3 bg-slate-950/90 flex items-center justify-between">
         <div>

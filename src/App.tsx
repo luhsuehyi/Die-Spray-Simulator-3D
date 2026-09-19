@@ -57,22 +57,22 @@ export default function App() {
             </>
           )}
 
-          {/* 2D / 3D Layout View Toggle Button in Bottom Left */}
-          <div className="absolute bottom-4 left-4 z-30 pointer-events-auto">
+          {/* 2D / 3D Digital Twin vs CAD Blueprint Toggle */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
             <button
               id="toggle-2d-plan-btn"
               onClick={() => setUse2DPlanView(!use2DPlanView)}
-              className="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700/80 shadow-lg backdrop-blur flex items-center gap-1.5 transition cursor-pointer"
+              className="px-2.5 py-1 bg-slate-900/90 hover:bg-slate-850 text-slate-200 text-xs font-medium rounded-md border border-slate-800 shadow-md backdrop-blur-md flex items-center gap-1.5 transition cursor-pointer"
             >
               {use2DPlanView ? (
                 <>
                   <Box className="w-3.5 h-3.5 text-blue-400" />
-                  <span>3D Digital Twin View</span>
+                  <span>3D Digital Twin</span>
                 </>
               ) : (
                 <>
                   <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>2D CAD Blueprint View</span>
+                  <span>2D Layout Plan</span>
                 </>
               )}
             </button>

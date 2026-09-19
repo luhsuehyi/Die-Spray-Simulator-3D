@@ -75,11 +75,11 @@ export const SimulationCanvas: React.FC = () => {
     if (!container) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0c111c); // Deep industrial slate
-    scene.fog = new THREE.FogExp2(0x0c111c, 0.00022);
+    scene.background = new THREE.Color(0x0b0f19); // Crisp deep industrial slate
+    scene.fog = new THREE.FogExp2(0x0b0f19, 0.00018);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 10, 20000);
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 10, 25000);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({
@@ -92,25 +92,25 @@ export const SimulationCanvas: React.FC = () => {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = 1.1;
     rendererRef.current = renderer;
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
-    // Soft Industrial Lighting Rig
-    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.55);
+    // Balanced High-Bay Industrial Lighting Rig
+    const ambientLight = new THREE.AmbientLight(0xcfd8e3, 0.45);
     scene.add(ambientLight);
 
-    // Primary High-Bay Key Light
-    const keyLight = new THREE.DirectionalLight(0xfff8ee, 1.4);
-    keyLight.position.set(1800, 2800, 2000);
+    // Primary High-Bay Key Light with crisp contact shadow
+    const keyLight = new THREE.DirectionalLight(0xfff8ee, 1.45);
+    keyLight.position.set(2000, 3200, 2200);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 2048;
     keyLight.shadow.mapSize.height = 2048;
     keyLight.shadow.camera.near = 100;
-    keyLight.shadow.camera.far = 8000;
-    keyLight.shadow.bias = -0.0008;
-    const d = 2600;
+    keyLight.shadow.camera.far = 9000;
+    keyLight.shadow.bias = -0.0007;
+    const d = 2800;
     keyLight.shadow.camera.left = -d;
     keyLight.shadow.camera.right = d;
     keyLight.shadow.camera.top = d;
@@ -118,36 +118,41 @@ export const SimulationCanvas: React.FC = () => {
     scene.add(keyLight);
 
     // Cool High-Bay Fill Light
-    const fillLight = new THREE.DirectionalLight(0x60a5fa, 0.5);
-    fillLight.position.set(-2000, 1600, -1800);
+    const fillLight = new THREE.DirectionalLight(0x60a5fa, 0.4);
+    fillLight.position.set(-2200, 1800, -2000);
     scene.add(fillLight);
 
+    // Cyan Rim / Silhouette Light to cleanly separate robot and machine from background
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.55);
+    rimLight.position.set(-1600, 2400, 1800);
+    scene.add(rimLight);
+
     // Die Platen Daylight Inspection Spotlight
-    const dieSpot = new THREE.SpotLight(0xe0f2fe, 1.3, 4500, Math.PI / 4.2, 0.35, 1.2);
-    dieSpot.position.set(0, 2200, 0);
+    const dieSpot = new THREE.SpotLight(0xe0f2fe, 1.4, 5000, Math.PI / 4.0, 0.3, 1.1);
+    dieSpot.position.set(0, 2400, 0);
     dieSpot.target.position.set(0, 0, 0);
     scene.add(dieSpot);
     scene.add(dieSpot.target);
 
-    // Contact Shadow Receiver Floor
+    // Contact Shadow Receiver Floor (Realistic epoxy factory coating with soft sheen)
     const floorY = -850;
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x090d16,
-      roughness: 0.9,
-      metalness: 0.1
+      color: 0x0a0e17,
+      roughness: 0.7,
+      metalness: 0.2
     });
-    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), floorMat);
+    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000), floorMat);
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.y = floorY;
     floorMesh.receiveShadow = true;
     scene.add(floorMesh);
 
-    // Dual-Tone Precision Workshop Grid
-    const mainGrid = new THREE.GridHelper(8000, 80, 0x334155, 0x172033);
+    // Dual-Tone Precision Workshop Grid (Subtle and non-distracting)
+    const mainGrid = new THREE.GridHelper(8000, 80, 0x1e293b, 0x111827);
     mainGrid.position.y = floorY + 1;
     scene.add(mainGrid);
 
-    const subGrid = new THREE.GridHelper(2400, 48, 0x475569, 0x1e293b);
+    const subGrid = new THREE.GridHelper(2400, 48, 0x334155, 0x1e293b);
     subGrid.position.y = floorY + 2;
     scene.add(subGrid);
 
