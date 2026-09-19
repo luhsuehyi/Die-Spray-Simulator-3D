@@ -39,7 +39,9 @@ export const SimulationCanvas: React.FC = () => {
     heatmapMetric,
     showTieBars,
     showSprayCone,
-    surfaceCells
+    surfaceCells,
+    isDemoMode,
+    demoPhase
   } = store;
 
   // Scene references
@@ -387,6 +389,32 @@ export const SimulationCanvas: React.FC = () => {
       cameraTargetOrbitRef.current = { theta: Math.PI * 0.15, phi: Math.PI / 2.15, radius: 950 };
     }
   }, [cameraPreset, machine.platenWidth]);
+
+  // Demo Presentation Mode: Smooth Cinematic Camera Shots
+  useEffect(() => {
+    if (!isDemoMode || !cameraRef.current) return;
+    const targetRadius = Math.max(2000, machine.platenWidth * 2.2);
+    switch (demoPhase) {
+      case 0: // 1. Full-cell establishing shot
+        cameraTargetOrbitRef.current = { theta: Math.PI / 3.8, phi: Math.PI / 3.1, radius: targetRadius * 1.35 };
+        break;
+      case 1: // 2. Robot approach
+        cameraTargetOrbitRef.current = { theta: Math.PI / 3.2, phi: Math.PI / 2.8, radius: 1550 };
+        break;
+      case 2: // 3. Close-up of spray process
+        cameraTargetOrbitRef.current = { theta: Math.PI * 0.12, phi: Math.PI / 2.15, radius: 900 };
+        break;
+      case 3: // 4. Die / part coverage view
+        cameraTargetOrbitRef.current = { theta: -0.05, phi: Math.PI / 2.08, radius: 1180 };
+        break;
+      case 4: // 5. Robot retract
+        cameraTargetOrbitRef.current = { theta: Math.PI * 0.42, phi: Math.PI / 2.9, radius: 1650 };
+        break;
+      case 5: // 6. Final full-cell shot
+        cameraTargetOrbitRef.current = { theta: Math.PI * 0.72, phi: Math.PI / 3.4, radius: targetRadius * 1.2 };
+        break;
+    }
+  }, [isDemoMode, demoPhase, machine.platenWidth]);
 
   // Backward compatibility view mode
   useEffect(() => {

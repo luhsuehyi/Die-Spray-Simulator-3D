@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { X, Video, Camera, Download, Check, Play } from 'lucide-react';
+import { X, Video, Camera, Download, Check, Play, Loader2, CheckCircle2 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
 import { translations } from '../../utils/i18n';
+import {
+  startDemoRecording,
+  stopDemoRecording,
+  RecorderProgress
+} from '../../utils/videoRecorder';
 
 export const VideoExportModal: React.FC = () => {
   const {
@@ -13,9 +18,12 @@ export const VideoExportModal: React.FC = () => {
   } = useSimulationStore();
 
   const t = translations[language] || translations['en'];
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedBlobUrl, setRecordedBlobUrl] = useState<string | null>(null);
   const [snapshotSuccess, setSnapshotSuccess] = useState(false);
+  const [recorderProgress, setRecorderProgress] = useState<RecorderProgress>({
+    state: 'idle',
+    durationSec: 0,
+    message: ''
+  });
 
   if (!isVideoExportOpen) return null;
 
@@ -37,38 +45,20 @@ export const VideoExportModal: React.FC = () => {
     const canvas = document.querySelector('#simulation-3d-canvas-container canvas') as HTMLCanvasElement;
     if (!canvas) return;
 
-    try {
-      resetSimulation();
-      setIsPlaying(true);
-      setIsRecording(true);
+    resetSimulation();
+    setIsPlaying(true);
 
-      const stream = canvas.captureStream(30);
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      const chunks: BlobPart[] = [];
+    startDemoRecording(
+      canvas,
+      (p) => {
+        setRecorderProgress(p);
+      },
+      12
+    );
+  };
 
-      mediaRecorder.ondataavailable = e => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setRecordedBlobUrl(url);
-        setIsRecording(false);
-      };
-
-      mediaRecorder.start();
-
-      // Record for 6 seconds or until loop
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop();
-        }
-      }, 6000);
-    } catch (e) {
-      console.error('Recording error:', e);
-      setIsRecording(false);
-    }
+  const handleStopRecord = () => {
+    stopDemoRecording();
   };
 
   return (
@@ -81,8 +71,8 @@ export const VideoExportModal: React.FC = () => {
               <Video className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">Media Export & Recording</h2>
-              <p className="text-xs text-slate-400">Capture 3D Viewport Media & Training Records</p>
+              <h2 className="text-sm font-bold text-white">Media Export (H.264 MP4)</h2>
+              <p className="text-xs text-slate-400">QuickTime & PowerPoint Compatible Video</p>
             </div>
           </div>
           <button
@@ -119,34 +109,72 @@ export const VideoExportModal: React.FC = () => {
               <div>
                 <div className="font-semibold text-slate-200 flex items-center gap-1.5">
                   <Video className="w-4 h-4 text-rose-400" />
-                  WebM Simulation Video
+                  H.264 / AVC MP4 Video
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">60fps digital twin recording for production SOPs</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Universal compatibility (macOS QuickTime, Safari, Chrome, Windows, PPT)
+                </div>
               </div>
             </div>
 
-            {isRecording ? (
-              <div className="p-3 bg-rose-950/60 border border-rose-500 rounded text-center text-rose-300 animate-pulse font-medium">
-                Recording 3D Simulation Stream (6s)...
-              </div>
-            ) : recordedBlobUrl ? (
-              <div className="space-y-2">
-                <video src={recordedBlobUrl} controls className="w-full rounded border border-slate-800 max-h-44" />
-                <a
-                  href={recordedBlobUrl}
-                  download={`Die_Spray_Sim_${Date.now()}.webm`}
-                  className="block w-full text-center py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded"
+            {recorderProgress.state === 'recording' && (
+              <div className="p-3 bg-rose-950/60 border border-rose-500 rounded text-center text-rose-300 animate-pulse font-medium flex items-center justify-between">
+                <span>{recorderProgress.message}</span>
+                <button
+                  onClick={handleStopRecord}
+                  className="px-2.5 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-500"
                 >
-                  Download Recorded WebM
-                </a>
+                  Stop Now
+                </button>
               </div>
-            ) : (
+            )}
+
+            {recorderProgress.state === 'rendering' && (
+              <div className="p-3 bg-amber-950/40 border border-amber-500/40 rounded text-center text-amber-300 font-medium flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                <span>Rendering captured frames...</span>
+              </div>
+            )}
+
+            {recorderProgress.state === 'encoding' && (
+              <div className="p-3 bg-blue-950/40 border border-blue-500/40 rounded text-center text-blue-300 font-medium flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                <span>Encoding H.264 MP4 with ffmpeg...</span>
+              </div>
+            )}
+
+            {recorderProgress.state === 'complete' && (
+              <div className="space-y-2">
+                <div className="p-3 bg-emerald-950/50 border border-emerald-500/50 rounded text-emerald-300 text-xs font-mono flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Export Complete: {recorderProgress.filename}</span>
+                </div>
+                {recorderProgress.downloadUrl && (
+                  <a
+                    href={recorderProgress.downloadUrl}
+                    download={recorderProgress.filename || 'Tovonn_AI_Die_Spray_Demo.mp4'}
+                    className="block w-full text-center py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded"
+                  >
+                    Download H.264 MP4
+                  </a>
+                )}
+                <button
+                  onClick={handleStartRecord}
+                  className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition"
+                >
+                  Record Another Take
+                </button>
+              </div>
+            )}
+
+            {recorderProgress.state === 'idle' && (
               <button
+                id="modal-start-record-btn"
                 onClick={handleStartRecord}
-                className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white rounded font-medium transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded font-medium transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
               >
-                <Play className="w-3.5 h-3.5" />
-                Start Recording Video
+                <Play className="w-3.5 h-3.5 fill-white" />
+                ● Record Demo (H.264 MP4)
               </button>
             )}
           </div>
