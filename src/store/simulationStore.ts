@@ -33,7 +33,7 @@ import { generateDieSurfaceCells } from '../utils/dieGeometry';
 import { simulateCoverage, DEFAULT_SPRAY_PHYSICS, DEFAULT_COVERAGE_STATS } from '../utils/sprayCoverage';
 import { runCollisionAudit } from '../utils/collisionDetection';
 import { calculateTrajectorySegments } from '../utils/machineCalculations';
-import { solveInverseKinematics } from '../utils/kinematics';
+import { solveInverseKinematics, forwardKinematics } from '../utils/kinematics';
 import { SprayIntentConfig, DEFAULT_SPRAY_INTENT, generatePathFromIntent } from '../utils/pathGenerator';
 import { PositionCandidate, diagnoseCellProblems } from '../utils/robotPositionAdvisor';
 import { evaluateCellRealism } from '../utils/cellRealism';
@@ -315,8 +315,8 @@ let storeState = {
     showDualRobots: false,
     hasMediaCabinet: true,
     hasDressPack: true,
-    distanceMm: -690,
-    heightMm: 1040,
+    distanceMm: -645,
+    heightMm: 1350,
     lateralMm: 0,
     rotationDeg: 0
   },
@@ -331,7 +331,7 @@ let storeState = {
   factoryEquipment: {
     realFactoryMode: true,
     showDosingFurnace: true,
-    showExtractorRobot: true,
+    showExtractorRobot: false,
     showQuenchConveyor: true,
     showTrimPress: false,
     showScrapBin: false,
@@ -347,7 +347,7 @@ let storeState = {
   machine: TOYO_DCM_FAMILY[6],
   robot: {
     ...ROBOT_PRESETS[0],
-    baseOffset: [0, 1040, -690] as [number, number, number]
+    baseOffset: [0, 1350, -645] as [number, number, number]
   },
   die: DIE_PRESETS[0],
   tool: TOOL_DEFAULT,
@@ -564,7 +564,8 @@ export function useSimulationStore(): SimulationStore {
       storeState.sprayIntent,
       storeState.die,
       storeState.robot,
-      storeState.tool
+      storeState.tool,
+      storeState.robotMountConfig
     );
     if (generatedWaypoints && generatedWaypoints.length > 0) {
       storeState.waypoints = generatedWaypoints;
@@ -904,7 +905,8 @@ export function useSimulationStore(): SimulationStore {
       storeState.sprayIntent,
       storeState.die,
       storeState.robot,
-      storeState.tool
+      storeState.tool,
+      storeState.robotMountConfig
     );
     storeState.waypoints = generated;
     storeState.selectedWaypointId = generated[0]?.id || null;
@@ -1228,15 +1230,18 @@ export function useSimulationStore(): SimulationStore {
   }, [storeState.waypoints]);
 
   // Determine current active waypoint and position based on currentTimeSec
-  const { activeWaypointIndex, currentPosition, currentEuler } = useMemo(() => {
+  const { activeWaypointIndex, currentPosition, currentEuler, currentInterpJoints, activeMotionType } = useMemo(() => {
     const time = storeState.currentTimeSec;
     const segs = trajectoryPlan.segments;
     if (segs.length === 0) {
       const first = storeState.waypoints[0] || DEFAULT_WAYPOINTS[0];
+      const defaultJoints: [number, number, number, number, number, number] = first.jointAnglesDeg || [90, 130, -145, 0, 15, 0];
       return {
         activeWaypointIndex: 0,
         currentPosition: [first.x, first.y, first.z] as [number, number, number],
-        currentEuler: [first.rx, first.ry, first.rz] as [number, number, number]
+        currentEuler: [first.rx, first.ry, first.rz] as [number, number, number],
+        currentInterpJoints: defaultJoints,
+        activeMotionType: first.motionType || 'JOINT'
       };
     }
 
@@ -1266,24 +1271,57 @@ export function useSimulationStore(): SimulationStore {
     const curRy = wStart.ry + (wEnd.ry - wStart.ry) * progress;
     const curRz = wStart.rz + (wEnd.rz - wStart.rz) * progress;
 
+    const jStart: [number, number, number, number, number, number] = wStart.jointAnglesDeg || [90, 130, -145, 0, 15, 0];
+    const jEnd: [number, number, number, number, number, number] = wEnd.jointAnglesDeg || jStart;
+    const interpJoints: [number, number, number, number, number, number] = [
+      jStart[0] + (jEnd[0] - jStart[0]) * progress,
+      jStart[1] + (jEnd[1] - jStart[1]) * progress,
+      jStart[2] + (jEnd[2] - jStart[2]) * progress,
+      jStart[3] + (jEnd[3] - jStart[3]) * progress,
+      jStart[4] + (jEnd[4] - jStart[4]) * progress,
+      jStart[5] + (jEnd[5] - jStart[5]) * progress
+    ];
+
     return {
       activeWaypointIndex: progress > 0.5 ? activeSeg.endIndex : activeSeg.startIndex,
       currentPosition: [curX, curY, curZ] as [number, number, number],
-      currentEuler: [curRx, curRy, curRz] as [number, number, number]
+      currentEuler: [curRx, curRy, curRz] as [number, number, number],
+      currentInterpJoints: interpJoints,
+      activeMotionType: wEnd.motionType || 'LINEAR'
     };
   }, [storeState.currentTimeSec, trajectoryPlan, storeState.waypoints]);
 
-  // Inverse Kinematics for active pose
+  // Inverse Kinematics for active pose with smooth joint-space tracking
   const currentRobotPose = useMemo(() => {
-    return solveInverseKinematics(
-      currentPosition,
-      currentEuler,
+    if (activeMotionType === 'LINEAR') {
+      const ik = solveInverseKinematics(
+        currentPosition,
+        currentEuler,
+        storeState.robot,
+        currentInterpJoints,
+        storeState.tool,
+        storeState.robotMountConfig
+      );
+      if (ik.jointAnglesDeg && !ik.hasJointLimitViolation && ik.isReachable) {
+        return ik;
+      }
+    }
+
+    const fk = forwardKinematics(
+      currentInterpJoints,
       storeState.robot,
-      [0, 0, 0, 0, 0, 0],
       storeState.tool,
       storeState.robotMountConfig
     );
-  }, [currentPosition, currentEuler, storeState.robot, storeState.tool, storeState.robotMountConfig]);
+    return {
+      jointAnglesDeg: currentInterpJoints,
+      tcpPositionMm: fk.tcpPosition,
+      tcpEulerDeg: fk.tcpEuler,
+      isReachable: true,
+      isSingular: false,
+      hasJointLimitViolation: false
+    };
+  }, [currentPosition, currentEuler, currentInterpJoints, activeMotionType, storeState.robot, storeState.tool, storeState.robotMountConfig]);
 
   // Compute Surface Cells and Coverage
   const { surfaceCells, coverageStats } = useMemo(() => {

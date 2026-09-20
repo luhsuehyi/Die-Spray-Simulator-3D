@@ -1,6 +1,7 @@
 import { Waypoint } from '../types/path';
 import { DieModel } from '../types/die';
-import { RobotModelSpec, RobotMountType, ToolCenterPoint, HpdcSequenceState } from '../types/robot';
+import { RobotModelSpec, RobotMountType, ToolCenterPoint, HpdcSequenceState, RobotMountConfig } from '../types/robot';
+import { solveInverseKinematics } from './kinematics';
 
 export interface SprayIntentConfig {
   selectedZones: {
@@ -49,45 +50,51 @@ export interface HpdcWaypointMeta {
 
 /**
  * Generates an automated, production-grade HPDC spray sequence.
- * Full 10-state sequence:
+ * Full 12-state sequence:
  * 1. HOME / PURGE
- * 2. STANDBY / WAIT
- * 3. APPROACH
- * 4. ENTRY
- * 5. READY / ALIGN
- * 6. SPRAY FIXED DIE
- * 7. SPRAY MOVING DIE
- * 8. SPRAY HOT SPOTS
- * 9. AIR BLOW / DRYING
- * 10. EXIT DIE
- * 11. STANDBY / HOME
+ * 2. WAIT FOR DIE OPEN (Boundary)
+ * 3. APPROACH (Toward Open Daylight)
+ * 4. ENTER DIE (Safety Clearance Zone)
+ * 5. READY TO SPRAY (Center Aligned)
+ * 6. SPRAY FIXED DIE (Top & Bottom Passes)
+ * 7. TRANSITION (Center Cross Daylight)
+ * 8. SPRAY MOVING DIE (Top & Bottom Passes)
+ * 9. SPRAY HOT SPOTS (Biscuit & Ingate)
+ * 10. AIR BLOW (Drying & Vent Clear)
+ * 11. EXIT DIE (Controlled Retract)
+ * 12. CLEAR MACHINE (Safety Boundary)
+ * 13. HOME STANDBY (Robot Clear)
  */
 export function generatePathFromIntent(
   intent: SprayIntentConfig,
   die: DieModel,
   robot: RobotModelSpec,
-  tool?: ToolCenterPoint
+  tool?: ToolCenterPoint,
+  mountConfig?: RobotMountConfig
 ): Waypoint[] {
   const waypoints: Waypoint[] = [];
   let index = 0;
 
-  const isTop = robot.mountOrientation === 'top';
-  const mountType: RobotMountType = (robot.mountOrientation as RobotMountType) || 'top';
-  const isDualSided = tool?.sprayHeadType === 'dual_sided' || tool?.manifoldType === 'dual_sided_matrix';
+  const mountType: RobotMountType = mountConfig?.type || (robot.mountOrientation as RobotMountType) || 'top';
+  const isTop = mountType === 'top' || mountType === 'top_machine_mount';
 
   const fixedFaceZ = die.fixedDieOffsetZ;
   const movableFaceZ = die.movableDieOffsetZ;
-  const daylightOpeningMm = Math.abs(movableFaceZ - fixedFaceZ);
-  const cavityDepth = die.dimensions.depth * 0.45;
+  const transitZ = (fixedFaceZ + movableFaceZ) / 2;
 
   // Standoff Z coordinates
   const fixedSprayZ = fixedFaceZ + intent.sprayDistanceMm;
   const movableSprayZ = movableFaceZ - intent.sprayDistanceMm;
-  const transitZ = (fixedFaceZ + movableFaceZ) / 2;
+
+  // Standard vertical lance orientation for top-mounted robot:
+  // In top-mount, [90, 0, 90] extends the tool lance vertically downward into the die daylight.
+  const baseRx = isTop ? 90 : 0;
+  const baseRz = isTop ? 90 : 0;
+  const sprayTilt = Math.max(-15, Math.min(15, intent.sprayAngleDeg || 0));
 
   // 1. HOME / PURGE: Safe starting position outside envelope
   const homePos: [number, number, number] = isTop
-    ? [robot.baseOffset[0], robot.baseOffset[1] - 320, robot.baseOffset[2] + 250]
+    ? [0, 240, -195]
     : [robot.baseOffset[0] * 0.82, 220, transitZ];
 
   waypoints.push({
@@ -97,9 +104,9 @@ export function generatePathFromIntent(
     x: homePos[0],
     y: homePos[1],
     z: homePos[2],
-    rx: isTop ? 90 : 0,
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'JOINT',
     speed: 1200,
     acceleration: 2500,
@@ -114,20 +121,21 @@ export function generatePathFromIntent(
     standoffDistanceMm: 500
   });
 
-  // 2. STANDBY / WAIT: Near clearance boundary waiting for die to open
-  const standbyY = isTop ? die.dimensions.height * 0.65 + 320 : 0;
-  const standbyX = isTop ? 0 : -(die.dimensions.width * 0.65 + 350);
+  // 2. WAIT FOR DIE OPEN (Boundary)
+  const waitPos: [number, number, number] = isTop
+    ? [0, 165, -79]
+    : [-(die.dimensions.width * 0.65 + 350), 0, transitZ];
 
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
     name: '2. WAIT FOR DIE OPEN (Boundary)',
-    x: standbyX,
-    y: standbyY,
-    z: transitZ,
-    rx: isTop ? 85 : 0,
+    x: waitPos[0],
+    y: waitPos[1],
+    z: waitPos[2],
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'JOINT',
     speed: 900,
     acceleration: 2200,
@@ -142,21 +150,22 @@ export function generatePathFromIntent(
     standoffDistanceMm: 400
   });
 
-  // 3. APPROACH: Moving toward the open mold daylight
-  const approachY = isTop ? die.dimensions.height * 0.5 + 160 : 0;
-  const approachX = isTop ? 0 : -(die.dimensions.width * 0.5 + 160);
+  // 3. APPROACH: Moving toward the open mold daylight above the top tie bars
+  const approachPos: [number, number, number] = isTop
+    ? [0, 96, -10]
+    : [-(die.dimensions.width * 0.5 + 160), 0, transitZ];
 
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
     name: '3. APPROACH (Toward Open Daylight)',
-    x: approachX,
-    y: approachY,
-    z: transitZ,
-    rx: isTop ? 80 : 0,
+    x: approachPos[0],
+    y: approachPos[1],
+    z: approachPos[2],
+    rx: baseRx,
     ry: 0,
-    rz: 0,
-    motionType: 'LINEAR',
+    rz: baseRz,
+    motionType: 'JOINT',
     speed: 850,
     acceleration: 2200,
     blendRadius: 35,
@@ -170,17 +179,21 @@ export function generatePathFromIntent(
     standoffDistanceMm: 300
   });
 
-  // 4. ENTRY: Moving into the space between die halves (Clearance Zone)
+  // 4. ENTER DIE (Safety Clearance Zone)
+  const enterPos: [number, number, number] = isTop
+    ? [0, 50, transitZ]
+    : [-(die.dimensions.width * 0.35), 0, transitZ];
+
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
     name: '4. ENTER DIE (Safety Clearance Zone)',
-    x: 0,
-    y: die.dimensions.height * 0.35,
-    z: transitZ,
-    rx: isTop ? 80 : 0,
+    x: enterPos[0],
+    y: enterPos[1],
+    z: enterPos[2],
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'LINEAR',
     speed: 650,
     acceleration: 1800,
@@ -195,17 +208,17 @@ export function generatePathFromIntent(
     standoffDistanceMm: 220
   });
 
-  // 5. READY / ALIGN: Tool oriented and aligned to spray
+  // 5. READY TO SPRAY (Center Aligned)
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
     name: '5. READY TO SPRAY (Center Aligned)',
     x: 0,
-    y: 0,
+    y: 20,
     z: fixedSprayZ,
-    rx: intent.sprayAngleDeg,
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'LINEAR',
     speed: 500,
     acceleration: 1500,
@@ -220,19 +233,21 @@ export function generatePathFromIntent(
     standoffDistanceMm: intent.sprayDistanceMm
   });
 
-  // 6. SPRAY FIXED DIE (Cover Side Stationary Half)
+  // 6. SPRAY FIXED DIE (Top Pass & Bottom Pass)
   if (intent.selectedZones.fixedCavity) {
-    // Upper Pass
+    const sweepX = Math.min(120, die.dimensions.width * 0.2);
+    const sweepY = Math.min(80, die.dimensions.height * 0.2);
+
     waypoints.push({
       id: `wp-${Date.now()}-${index}`,
       index: index++,
       name: '6a. SPRAY FIXED DIE (Top Pass)',
-      x: -die.dimensions.width * 0.22,
-      y: die.dimensions.height * 0.22,
+      x: -sweepX,
+      y: sweepY,
       z: fixedSprayZ,
-      rx: intent.sprayAngleDeg,
+      rx: baseRx + sprayTilt,
       ry: 0,
-      rz: 0,
+      rz: baseRz,
       motionType: 'LINEAR',
       speed: intent.spraySpeedMmS,
       acceleration: 1800,
@@ -247,17 +262,16 @@ export function generatePathFromIntent(
       standoffDistanceMm: intent.sprayDistanceMm
     });
 
-    // Lower Pass
     waypoints.push({
       id: `wp-${Date.now()}-${index}`,
       index: index++,
       name: '6b. SPRAY FIXED DIE (Bottom Pass)',
-      x: die.dimensions.width * 0.22,
-      y: -die.dimensions.height * 0.2,
+      x: sweepX,
+      y: -sweepY,
       z: fixedSprayZ,
-      rx: intent.sprayAngleDeg,
+      rx: baseRx + sprayTilt,
       ry: 0,
-      rz: 0,
+      rz: baseRz,
       motionType: 'LINEAR',
       speed: intent.spraySpeedMmS,
       acceleration: 1800,
@@ -273,21 +287,46 @@ export function generatePathFromIntent(
     });
   }
 
-  // 7. SPRAY MOVING DIE (Ejector Side Core Face)
+  // 7. TRANSITION (Cross Daylight from Fixed to Movable side)
+  waypoints.push({
+    id: `wp-${Date.now()}-${index}`,
+    index: index++,
+    name: '7. TRANSITION (Cross Daylight)',
+    x: 0,
+    y: 0,
+    z: transitZ,
+    rx: baseRx,
+    ry: 0,
+    rz: baseRz,
+    motionType: 'LINEAR',
+    speed: 600,
+    acceleration: 2000,
+    blendRadius: 30,
+    dwellTimeSec: 0,
+    action: 'NONE',
+    targetFace: 'TRANSIT',
+    lubePressureBar: 0,
+    airPressureBar: 0,
+    flowRateMlPerSec: 0,
+    nozzleFanAngleDeg: 60,
+    standoffDistanceMm: 250
+  });
+
+  // 8. SPRAY MOVING DIE (Top Pass & Bottom Pass)
   if (intent.selectedZones.movableCore) {
-    // Note: If dual-sided, tool already has nozzles facing moving die
-    const wristAngle = isDualSided ? intent.sprayAngleDeg : 180 + intent.sprayAngleDeg;
+    const sweepX = Math.min(120, die.dimensions.width * 0.2);
+    const sweepY = Math.min(80, die.dimensions.height * 0.2);
 
     waypoints.push({
       id: `wp-${Date.now()}-${index}`,
       index: index++,
-      name: '7a. SPRAY MOVING DIE (Ejector Pin Area)',
-      x: -die.dimensions.width * 0.2,
-      y: die.dimensions.height * 0.1,
+      name: '8a. SPRAY MOVING DIE (Top Pass)',
+      x: -sweepX,
+      y: sweepY,
       z: movableSprayZ,
-      rx: wristAngle,
+      rx: baseRx - sprayTilt,
       ry: 0,
-      rz: 0,
+      rz: baseRz,
       motionType: 'LINEAR',
       speed: intent.spraySpeedMmS,
       acceleration: 1800,
@@ -305,13 +344,13 @@ export function generatePathFromIntent(
     waypoints.push({
       id: `wp-${Date.now()}-${index}`,
       index: index++,
-      name: '7b. SPRAY MOVING DIE (Core Base Sweep)',
-      x: die.dimensions.width * 0.18,
-      y: -die.dimensions.height * 0.15,
+      name: '8b. SPRAY MOVING DIE (Bottom Pass)',
+      x: sweepX,
+      y: -sweepY,
       z: movableSprayZ,
-      rx: wristAngle,
+      rx: baseRx - sprayTilt,
       ry: 0,
-      rz: 0,
+      rz: baseRz,
       motionType: 'LINEAR',
       speed: intent.spraySpeedMmS,
       acceleration: 1800,
@@ -327,19 +366,18 @@ export function generatePathFromIntent(
     });
   }
 
-  // 8. SPRAY HOT SPOTS (Biscuit, Runner Gate, Core Pins, Thick Bosses)
-  if (intent.selectedZones.hotSpots || intent.selectedZones.gateArea || intent.selectedZones.core || intent.selectedZones.slide) {
-    // 8a. Biscuit & Ingate High Thermal Priority
+  // 9. SPRAY HOT SPOTS (Biscuit, Runner Gate, Core Pins)
+  if (intent.selectedZones.hotSpots || intent.selectedZones.gateArea) {
     waypoints.push({
       id: `wp-${Date.now()}-${index}`,
       index: index++,
-      name: '8a. SPRAY HOT SPOT (Biscuit & Ingate)',
+      name: '9a. SPRAY HOT SPOT (Biscuit & Ingate)',
       x: 0,
-      y: -die.dimensions.height * 0.32,
+      y: -Math.min(120, die.dimensions.height * 0.3),
       z: fixedSprayZ - 15,
-      rx: -15,
+      rx: baseRx - 5,
       ry: 0,
-      rz: 0,
+      rz: baseRz,
       motionType: 'LINEAR',
       speed: Math.max(120, intent.spraySpeedMmS * 0.6),
       acceleration: 1400,
@@ -353,46 +391,19 @@ export function generatePathFromIntent(
       nozzleFanAngleDeg: 65,
       standoffDistanceMm: Math.max(90, intent.sprayDistanceMm - 25)
     });
-
-    // 8b. Core Pin Deep Pocket / Slider Interface
-    if (intent.selectedZones.core || intent.selectedZones.slide) {
-      waypoints.push({
-        id: `wp-${Date.now()}-${index}`,
-        index: index++,
-        name: '8b. SPRAY HOT SPOT (Core Pin & Slide)',
-        x: die.dimensions.width * 0.15,
-        y: die.dimensions.height * 0.18,
-        z: fixedSprayZ - cavityDepth * 0.35,
-        rx: 12,
-        ry: 0,
-        rz: 0,
-        motionType: 'LINEAR',
-        speed: Math.max(140, intent.spraySpeedMmS * 0.7),
-        acceleration: 1500,
-        blendRadius: 20,
-        dwellTimeSec: 0.35,
-        action: 'LUBE_AND_AIR',
-        targetFace: 'FIXED_DIE',
-        lubePressureBar: 4.6,
-        airPressureBar: 6.0,
-        flowRateMlPerSec: 50,
-        nozzleFanAngleDeg: 60,
-        standoffDistanceMm: Math.max(90, intent.sprayDistanceMm - 20)
-      });
-    }
   }
 
-  // 9. AIR BLOW / DRYING: Liquid off, air on. Flash drying and excess pooling removal
+  // 10. AIR BLOW / DRYING: Flash drying and excess pooling removal
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
-    name: '9. AIR BLOW (Drying & Vent Clear)',
+    name: '10. AIR BLOW (Drying & Vent Clear)',
     x: 0,
     y: 0,
     z: transitZ,
-    rx: 90,
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'LINEAR',
     speed: 650,
     acceleration: 2000,
@@ -407,17 +418,17 @@ export function generatePathFromIntent(
     standoffDistanceMm: 180
   });
 
-  // 10. EXIT DIE: Controlled retract trajectory through daylight opening
+  // 11. EXIT DIE: Controlled retract trajectory through daylight opening
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
-    name: '10. EXIT DIE (Controlled Retract)',
-    x: approachX,
-    y: approachY,
-    z: transitZ,
-    rx: isTop ? 80 : 0,
+    name: '11. EXIT DIE (Controlled Retract)',
+    x: approachPos[0],
+    y: approachPos[1],
+    z: approachPos[2],
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'LINEAR',
     speed: 950,
     acceleration: 2400,
@@ -432,17 +443,42 @@ export function generatePathFromIntent(
     standoffDistanceMm: 350
   });
 
-  // 11. STANDBY / HOME: Machine clear signal emitted, ready for die closing
+  // 12. CLEAR MACHINE: Safety Boundary reached above top tie bars
   waypoints.push({
     id: `wp-${Date.now()}-${index}`,
     index: index++,
-    name: '11. HOME STANDBY (Robot Clear)',
+    name: '12. CLEAR MACHINE (Safety Boundary)',
+    x: waitPos[0],
+    y: waitPos[1],
+    z: waitPos[2],
+    rx: baseRx,
+    ry: 0,
+    rz: baseRz,
+    motionType: 'JOINT',
+    speed: 1000,
+    acceleration: 2400,
+    blendRadius: 30,
+    dwellTimeSec: 0,
+    action: 'NONE',
+    targetFace: 'TRANSIT',
+    lubePressureBar: 0,
+    airPressureBar: 0,
+    flowRateMlPerSec: 0,
+    nozzleFanAngleDeg: 60,
+    standoffDistanceMm: 450
+  });
+
+  // 13. HOME STANDBY: Machine clear signal emitted, ready for die closing
+  waypoints.push({
+    id: `wp-${Date.now()}-${index}`,
+    index: index++,
+    name: '13. HOME STANDBY (Robot Clear)',
     x: homePos[0],
     y: homePos[1],
     z: homePos[2],
-    rx: isTop ? 90 : 0,
+    rx: baseRx,
     ry: 0,
-    rz: 0,
+    rz: baseRz,
     motionType: 'JOINT',
     speed: 1200,
     acceleration: 2500,
@@ -457,5 +493,38 @@ export function generatePathFromIntent(
     standoffDistanceMm: 500
   });
 
+  // Precompute authoritative, continuous, collision-free joint angles for every waypoint
+  const effectiveMount: RobotMountConfig = mountConfig || {
+    type: mountType,
+    topMountStyle: 'platen_direct',
+    heightMm: robot.baseOffset[1] || 1350,
+    distanceMm: robot.baseOffset[2] || -645,
+    lateralMm: robot.baseOffset[0] || 0,
+    rotationDeg: 0
+  };
+
+  let seedJoints: [number, number, number, number, number, number] = isTop
+    ? [90.0, 130.0, -145.0, 0.0, 15.0, 0.0]
+    : [0, 0, 0, 0, 0, 0];
+
+  for (const wp of waypoints) {
+    const ik = solveInverseKinematics(
+      [wp.x, wp.y, wp.z],
+      [wp.rx, wp.ry, wp.rz],
+      robot,
+      seedJoints,
+      tool,
+      effectiveMount
+    );
+
+    if (ik.jointAnglesDeg && !ik.hasJointLimitViolation) {
+      wp.jointAnglesDeg = ik.jointAnglesDeg;
+      seedJoints = ik.jointAnglesDeg;
+    } else if (ik.jointAnglesDeg) {
+      wp.jointAnglesDeg = ik.jointAnglesDeg;
+    }
+  }
+
   return waypoints;
 }
+
