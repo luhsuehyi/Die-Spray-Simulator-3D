@@ -614,13 +614,13 @@ export const SimulationCanvas: React.FC = () => {
     // Build static pedestal / gantry / deck firmly anchored to machine frame at base position
     buildRobotMountStructure(mountGroup, robotMountConfig, robot, machine, fk.jointPositions.base);
 
-    // Recreate persistent 60FPS RobotArmRig
+    // Recreate persistent 60FPS RobotArmRig with authoritative kinematic hierarchy
     if (armRigRef.current) {
       armRigRef.current.dispose();
       armRigRef.current = null;
     }
-    armRigRef.current = createRobotArmRig(armGroup, robot, tool, robotMountConfig.type);
-    armRigRef.current.updatePose(fk.jointPositions, fk.tcpMatrix);
+    armRigRef.current = createRobotArmRig(armGroup, robot, tool, robotMountConfig);
+    armRigRef.current.updatePose(currentRobotPose.jointAnglesDeg, fk.tcpMatrix);
   }, [robot, tool, robotMountConfig, machine]);
 
   // 6B. Zero-Allocation Fast 60FPS Robot Pose & Spray Cone Orientation Update
@@ -630,7 +630,7 @@ export const SimulationCanvas: React.FC = () => {
 
     // 1. Update persistent robot arm transforms (Zero allocations)
     if (armRigRef.current) {
-      armRigRef.current.updatePose(fk.jointPositions, fk.tcpMatrix);
+      armRigRef.current.updatePose(currentRobotPose.jointAnglesDeg, fk.tcpMatrix);
     }
 
     // 2. Active Spray Cone & Mist Orientation
