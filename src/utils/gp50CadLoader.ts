@@ -297,7 +297,7 @@ export async function loadGp50CadModel(): Promise<{ scene: THREE.Group; report: 
           return scene;
         }
       } catch (err: any) {
-        // Continue to next path
+        console.warn(`[GP50 CAD] Notice while checking "${url}":`, err?.message || err);
       }
     }
 
