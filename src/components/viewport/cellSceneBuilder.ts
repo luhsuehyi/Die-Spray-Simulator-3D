@@ -4,6 +4,7 @@ import { DieModel } from '../../types/die';
 import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig } from '../../types/robot';
 import { buildRobotKinematicModel } from '../../utils/kinematics/robotModelBuilder';
 import { Matrix4Tuple } from '../../types/kinematics';
+import { loadGp50CadModel, bindGp50CadToKinematicRig } from '../../utils/gp50CadLoader';
 
 // Material Cache to avoid recreating shaders every frame
 export const MAT = {
@@ -1082,116 +1083,124 @@ export function createRobotArmRig(
   // 2. INDUSTRIAL ROBOT 3D MESH GEOMETRIES & ATTACHMENTS
   // =========================================================================
 
+  // Track procedural arm meshes to hide/remove them when actual CAD model is loaded
+  const proceduralArmMeshes: THREE.Object3D[] = [];
+  const addProcedural = <T extends THREE.Object3D>(parent: THREE.Object3D, mesh: T): T => {
+    proceduralArmMeshes.push(mesh);
+    parent.add(mesh);
+    return mesh;
+  };
+
   // --- Base Anchor Meshes (Stationary mounting interface) ---
   const baseFlangeGeo = trackGeo(new THREE.CylinderGeometry(230, 250, 48, 32));
   baseFlangeGeo.rotateX(Math.PI / 2);
   baseFlangeGeo.translate(0, 0, 24);
   const baseFlangeMesh = new THREE.Mesh(baseFlangeGeo, MAT.jointDark);
   baseFlangeMesh.castShadow = true;
-  baseGroup.add(baseFlangeMesh);
+  addProcedural(baseGroup, baseFlangeMesh);
 
   const boltRingGeo = trackGeo(new THREE.CylinderGeometry(245, 245, 14, 32));
   boltRingGeo.rotateX(Math.PI / 2);
   boltRingGeo.translate(0, 0, 10);
   const boltRingMesh = new THREE.Mesh(boltRingGeo, MAT.platenSteel);
-  baseGroup.add(boltRingMesh);
+  addProcedural(baseGroup, boltRingMesh);
 
   const baseHousingGeo = trackGeo(new THREE.CylinderGeometry(205, 225, 36, 32));
   baseHousingGeo.rotateX(Math.PI / 2);
   baseHousingGeo.translate(0, 0, 48 + 18);
   const baseHousingMesh = new THREE.Mesh(baseHousingGeo, castMat);
   baseHousingMesh.castShadow = true;
-  baseGroup.add(baseHousingMesh);
+  addProcedural(baseGroup, baseHousingMesh);
 
   const junctionBoxGeo = trackGeo(new THREE.BoxGeometry(110, 75, 55));
   const junctionBox = new THREE.Mesh(junctionBoxGeo, MAT.jointDark);
   junctionBox.position.set(0, -180, 45);
-  baseGroup.add(junctionBox);
+  addProcedural(baseGroup, junctionBox);
 
   // --- J1 Turntable & Shoulder Fork Meshes ---
   const j1TurntableGeo = trackGeo(new THREE.CylinderGeometry(195, 205, 32, 32));
   j1TurntableGeo.rotateX(Math.PI / 2);
   j1TurntableGeo.translate(0, 0, 84 + 16);
   const j1TurntableMesh = new THREE.Mesh(j1TurntableGeo, castMat);
-  j1Group.add(j1TurntableMesh);
+  addProcedural(j1Group, j1TurntableMesh);
 
   const forkH = Math.max(80, d1 - 100);
   const forkColGeo = trackGeo(new THREE.BoxGeometry(200, 220, forkH));
   const forkColMesh = new THREE.Mesh(forkColGeo, castMat);
   forkColMesh.position.set(a1 * 0.45, 0, 100 + forkH / 2);
   forkColMesh.castShadow = true;
-  j1Group.add(forkColMesh);
+  addProcedural(j1Group, forkColMesh);
 
   [-1, 1].forEach(side => {
     const earGeo = trackGeo(new THREE.BoxGeometry(160, 42, 170));
     const earMesh = new THREE.Mesh(earGeo, castMat);
     earMesh.position.set(a1, side * 115, d1);
     earMesh.castShadow = true;
-    j1Group.add(earMesh);
+    addProcedural(j1Group, earMesh);
 
     const capGeo = trackGeo(new THREE.CylinderGeometry(60, 60, 16, 24));
     const capMesh = new THREE.Mesh(capGeo, MAT.jointDark);
     capMesh.position.set(a1, side * 138, d1);
-    j1Group.add(capMesh);
+    addProcedural(j1Group, capMesh);
   });
 
   const j1MotorGeo = trackGeo(new THREE.CylinderGeometry(70, 70, 180, 24));
   j1MotorGeo.rotateX(Math.PI / 2);
   const j1MotorMesh = new THREE.Mesh(j1MotorGeo, MAT.jointDark);
   j1MotorMesh.position.set(-70, 0, 100 + forkH * 0.45);
-  j1Group.add(j1MotorMesh);
+  addProcedural(j1Group, j1MotorMesh);
 
   // --- J2 Shoulder & Upper Arm Meshes ---
   const shoulderHubGeo = trackGeo(new THREE.CylinderGeometry(95, 95, 230, 24));
   const shoulderHubMesh = new THREE.Mesh(shoulderHubGeo, MAT.jointDark);
   shoulderHubMesh.castShadow = true;
-  j2Group.add(shoulderHubMesh);
+  addProcedural(j2Group, shoulderHubMesh);
 
   const j2MotorGeo = trackGeo(new THREE.CylinderGeometry(68, 68, 140, 20));
   j2MotorGeo.rotateX(Math.PI / 2);
   const j2MotorMesh = new THREE.Mesh(j2MotorGeo, MAT.jointDark);
   j2MotorMesh.position.set(-65, 0, -45);
-  j2Group.add(j2MotorMesh);
+  addProcedural(j2Group, j2MotorMesh);
 
   const upperArmGeo = trackGeo(new THREE.CylinderGeometry(76, 92, l2, 24));
   upperArmGeo.rotateX(Math.PI / 2);
   upperArmGeo.translate(0, 0, l2 / 2);
   const upperArmMesh = new THREE.Mesh(upperArmGeo, castMat);
   upperArmMesh.castShadow = true;
-  j2Group.add(upperArmMesh);
+  addProcedural(j2Group, upperArmMesh);
 
   const ribGeo = trackGeo(new THREE.BoxGeometry(32, 28, l2 * 0.85));
   const ribMesh = new THREE.Mesh(ribGeo, MAT.jointDark);
   ribMesh.position.set(55, 0, l2 * 0.5);
-  j2Group.add(ribMesh);
+  addProcedural(j2Group, ribMesh);
 
   const trimGeo = trackGeo(new THREE.BoxGeometry(36, 6, 140));
   const trimMesh = new THREE.Mesh(trimGeo, MAT.aluminumPart);
   trimMesh.position.set(0, 78, l2 * 0.5);
-  j2Group.add(trimMesh);
+  addProcedural(j2Group, trimMesh);
 
   // --- J3 Elbow & Forearm Meshes ---
   const elbowHubGeo = trackGeo(new THREE.CylinderGeometry(85, 85, 210, 24));
   const elbowHubMesh = new THREE.Mesh(elbowHubGeo, MAT.jointDark);
   elbowHubMesh.castShadow = true;
-  j3Group.add(elbowHubMesh);
+  addProcedural(j3Group, elbowHubMesh);
 
   const elbowMotorGeo = trackGeo(new THREE.CylinderGeometry(62, 62, 90, 20));
   const elbowMotorMesh = new THREE.Mesh(elbowMotorGeo, MAT.jointDark);
   elbowMotorMesh.position.set(0, 115, 0);
-  j3Group.add(elbowMotorMesh);
+  addProcedural(j3Group, elbowMotorMesh);
 
   const forearmGeo = trackGeo(new THREE.CylinderGeometry(58, 74, l3, 24));
   forearmGeo.rotateX(Math.PI / 2);
   forearmGeo.translate(0, 0, l3 / 2);
   const forearmMesh = new THREE.Mesh(forearmGeo, castMat);
   forearmMesh.castShadow = true;
-  j3Group.add(forearmMesh);
+  addProcedural(j3Group, forearmMesh);
 
   const conduitGeo = trackGeo(new THREE.BoxGeometry(24, 20, l3 * 0.8));
   const conduitMesh = new THREE.Mesh(conduitGeo, MAT.jointDark);
   conduitMesh.position.set(0, 52, l3 * 0.5);
-  j3Group.add(conduitMesh);
+  addProcedural(j3Group, conduitMesh);
 
   // --- J4 Forearm Roll Meshes ---
   const j4CollarGeo = trackGeo(new THREE.CylinderGeometry(60, 64, 60, 24));
@@ -1199,27 +1208,27 @@ export function createRobotArmRig(
   j4CollarGeo.translate(0, 0, -25);
   const j4CollarMesh = new THREE.Mesh(j4CollarGeo, MAT.jointDark);
   j4CollarMesh.castShadow = true;
-  j4Group.add(j4CollarMesh);
+  addProcedural(j4Group, j4CollarMesh);
 
   // --- J5 Wrist Pitch Meshes ---
   const j5KnuckleGeo = trackGeo(new THREE.CylinderGeometry(52, 52, 130, 20));
   const j5KnuckleMesh = new THREE.Mesh(j5KnuckleGeo, MAT.jointDark);
   j5KnuckleMesh.castShadow = true;
-  j5Group.add(j5KnuckleMesh);
+  addProcedural(j5Group, j5KnuckleMesh);
 
   const j5BarrelGeo = trackGeo(new THREE.CylinderGeometry(46, 50, l4 * 0.7, 20));
   j5BarrelGeo.rotateX(Math.PI / 2);
   j5BarrelGeo.translate(0, 0, l4 * 0.35);
   const j5BarrelMesh = new THREE.Mesh(j5BarrelGeo, castMat);
   j5BarrelMesh.castShadow = true;
-  j5Group.add(j5BarrelMesh);
+  addProcedural(j5Group, j5BarrelMesh);
 
   // --- J6 Flange Roll Meshes ---
   const j6SpindleGeo = trackGeo(new THREE.CylinderGeometry(48, 48, 20, 24));
   j6SpindleGeo.rotateX(Math.PI / 2);
   j6SpindleGeo.translate(0, 0, l4 - 10);
   const j6SpindleMesh = new THREE.Mesh(j6SpindleGeo, MAT.jointDark);
-  j6Group.add(j6SpindleMesh);
+  addProcedural(j6Group, j6SpindleMesh);
 
   // --- Flange Adapter Meshes ---
   const flangePlateGeo = trackGeo(new THREE.CylinderGeometry(75, 75, 18, 24));
@@ -1349,7 +1358,7 @@ export function createRobotArmRig(
     geometries.length = 0;
   };
 
-  return {
+  const rig: RobotArmRig = {
     armGroup,
     baseGroup,
     tcpGroup,
@@ -1358,6 +1367,28 @@ export function createRobotArmRig(
     updatePose,
     dispose
   };
+
+  // If Yaskawa GP50, load actual CAD geometry (S_AXIS, L_AXIS, U_AXIS, R_AXIS, B_AXIS, TLAXIS)
+  // and bind to the authoritative kinematic rig, replacing procedural meshes.
+  if (robot.id === 'yaskawa-gp50') {
+    loadGp50CadModel().then(result => {
+      if (result && result.scene) {
+        bindGp50CadToKinematicRig(
+          rig,
+          result.scene.clone(true),
+          () => {
+            proceduralArmMeshes.forEach(mesh => {
+              mesh.visible = false;
+              if (mesh.parent) mesh.parent.remove(mesh);
+            });
+            updatePose(lastJointsDeg);
+          }
+        );
+      }
+    });
+  }
+
+  return rig;
 }
 
 /**
