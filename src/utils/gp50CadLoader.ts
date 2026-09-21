@@ -305,15 +305,17 @@ export function bindGp50CadToKinematicRig(
       for (const node of classified[role]) {
         if (alreadyMoved.has(node)) continue;
         let ancestor = node.parent;
-        let ownedByAnotherRole = false;
+        let ownedBySameRoleAncestor = false;
         while (ancestor && ancestor !== cadScene) {
-          if (classifyNodeName(ancestor.name)) {
-            ownedByAnotherRole = true;
+          if (classifyNodeName(ancestor.name) === role) {
+            ownedBySameRoleAncestor = true;
             break;
           }
           ancestor = ancestor.parent;
         }
-        if (ownedByAnotherRole) continue;
+        if (ownedBySameRoleAncestor) continue;
+        // If the node is nested under a different axis assembly, detach it
+        // into its own joint group so the downstream axis can move independently.
         roleToGroup[role].attach(node);
         alreadyMoved.add(node);
       }
