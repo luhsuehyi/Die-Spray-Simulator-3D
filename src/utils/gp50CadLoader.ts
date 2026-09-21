@@ -4,12 +4,12 @@ import { RobotArmRig } from '../components/viewport/cellSceneBuilder';
 
 export interface Gp50NodeClassification {
   base?: THREE.Object3D;
-  sAxis?: THREE.Object3D; // J1
-  lAxis?: THREE.Object3D; // J2
-  uAxis?: THREE.Object3D; // J3
-  rAxis?: THREE.Object3D; // J4
-  bAxis?: THREE.Object3D; // J5
-  tlAxis?: THREE.Object3D; // J6
+  sAxis?: THREE.Object3D;
+  lAxis?: THREE.Object3D;
+  uAxis?: THREE.Object3D;
+  rAxis?: THREE.Object3D;
+  bAxis?: THREE.Object3D;
+  tlAxis?: THREE.Object3D;
   unassigned: THREE.Object3D[];
 }
 
@@ -42,279 +42,175 @@ export interface Gp50HierarchyReport {
 
 let cachedGltfScene: THREE.Group | null = null;
 let cachedReport: Gp50HierarchyReport | null = null;
-let isLoadAttempted = false;
 let loadPromise: Promise<THREE.Group | null> | null = null;
 
-// Premium Yaskawa Motoman factory finish materials
 const MAT_YASKAWA_BLUE = new THREE.MeshStandardMaterial({
   color: 0x02569b,
   metalness: 0.25,
   roughness: 0.45,
 });
-
 const MAT_DARK_DRIVE = new THREE.MeshStandardMaterial({
   color: 0x24282c,
   metalness: 0.55,
   roughness: 0.35,
 });
-
 const MAT_FLANGE_STEEL = new THREE.MeshStandardMaterial({
   color: 0x9ca3af,
   metalness: 0.75,
   roughness: 0.2,
 });
 
-/**
- * Classifies a node name into one of the Yaskawa GP50 components.
- * Matches standard STEP assembly conventions: S_AXIS, L_AXIS, U_AXIS, R_AXIS, B_AXIS, TLAXIS
- */
-function classifyNodeName(rawName: string): 'BASE' | 'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6' | null {
+type Gp50Role = 'BASE' | 'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6' | null;
+
+function classifyNodeName(rawName: string): Gp50Role {
   const clean = rawName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // J6: TLAXIS / TL_AXIS / T_AXIS / FLANGE
-  if (
-    clean.includes('tlaxis') ||
-    clean.includes('tlax') ||
-    clean.includes('taxis') ||
-    clean.includes('joint6') ||
-    clean.includes('axis6') ||
-    clean === 'j6' ||
-    clean.endsWith('j6')
-  ) {
-    return 'J6';
-  }
-
-  // J5: B_AXIS / BEND
-  if (
-    clean.includes('baxis') ||
-    clean.includes('joint5') ||
-    clean.includes('axis5') ||
-    clean === 'j5' ||
-    clean.endsWith('j5')
-  ) {
-    return 'J5';
-  }
-
-  // J4: R_AXIS / ROLL
-  if (
-    clean.includes('raxis') ||
-    clean.includes('joint4') ||
-    clean.includes('axis4') ||
-    clean === 'j4' ||
-    clean.endsWith('j4')
-  ) {
-    return 'J4';
-  }
-
-  // J3: U_AXIS / UPPER ARM
-  if (
-    clean.includes('uaxis') ||
-    clean.includes('joint3') ||
-    clean.includes('axis3') ||
-    clean === 'j3' ||
-    clean.endsWith('j3')
-  ) {
-    return 'J3';
-  }
-
-  // J2: L_AXIS / LOWER ARM
-  if (
-    clean.includes('laxis') ||
-    clean.includes('joint2') ||
-    clean.includes('axis2') ||
-    clean === 'j2' ||
-    clean.endsWith('j2')
-  ) {
-    return 'J2';
-  }
-
-  // J1: S_AXIS / SWIVEL / TURNTABLE
-  if (
-    clean.includes('saxis') ||
-    clean.includes('joint1') ||
-    clean.includes('axis1') ||
-    clean === 'j1' ||
-    clean.endsWith('j1')
-  ) {
-    return 'J1';
-  }
-
-  // BASE
-  if (
-    clean.includes('base') ||
-    clean.includes('pedestal') ||
-    clean.includes('housing') ||
-    clean.includes('frame') ||
-    clean === 'b'
-  ) {
-    return 'BASE';
-  }
-
+  if (clean.includes('tlaxis') || clean.includes('taxis') || clean.includes('joint6') || clean.includes('axis6') || clean === 'j6' || clean.endsWith('j6')) return 'J6';
+  if (clean.includes('baxis') || clean.includes('joint5') || clean.includes('axis5') || clean === 'j5' || clean.endsWith('j5')) return 'J5';
+  if (clean.includes('raxis') || clean.includes('joint4') || clean.includes('axis4') || clean === 'j4' || clean.endsWith('j4')) return 'J4';
+  if (clean.includes('uaxis') || clean.includes('joint3') || clean.includes('axis3') || clean === 'j3' || clean.endsWith('j3')) return 'J3';
+  if (clean.includes('laxis') || clean.includes('joint2') || clean.includes('axis2') || clean === 'j2' || clean.endsWith('j2')) return 'J2';
+  if (clean.includes('saxis') || clean.includes('joint1') || clean.includes('axis1') || clean === 'j1' || clean.endsWith('j1')) return 'J1';
+  if (clean.includes('base') || clean.includes('pedestal')) return 'BASE';
   return null;
 }
 
+function isCanonicalAxisName(name: string, role: Exclude<Gp50Role, 'BASE' | null>): boolean {
+  const clean = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (role === 'J1') return clean === 'saxis';
+  if (role === 'J2') return clean === 'laxis';
+  if (role === 'J3') return clean === 'uaxis';
+  if (role === 'J4') return clean === 'raxis';
+  if (role === 'J5') return clean === 'baxis';
+  return clean === 'taxis' || clean === 'tlaxis';
+}
+
+function chooseRepresentative(nodes: THREE.Object3D[], role: Exclude<Gp50Role, null>): THREE.Object3D | undefined {
+  if (!nodes.length) return undefined;
+  if (role !== 'BASE') {
+    const exact = nodes.find(n => isCanonicalAxisName(n.name, role as Exclude<Gp50Role, 'BASE' | null>));
+    if (exact) return exact;
+  }
+  return [...nodes].sort((a, b) => a.name.length - b.name.length)[0];
+}
+
+function collectRoleNodes(scene: THREE.Object3D): Record<Exclude<Gp50Role, null>, THREE.Object3D[]> {
+  const groups: Record<Exclude<Gp50Role, null>, THREE.Object3D[]> = {
+    BASE: [], J1: [], J2: [], J3: [], J4: [], J5: [], J6: []
+  };
+  scene.traverse(node => {
+    const role = classifyNodeName(node.name);
+    if (role) groups[role].push(node);
+  });
+  return groups;
+}
+
+function removeFromParent(node: THREE.Object3D) {
+  if (node.parent) node.parent.remove(node);
+}
+
+function applyGp50Materials(scene: THREE.Object3D) {
+  scene.traverse(node => {
+    if (!(node as THREE.Mesh).isMesh) return;
+    const mesh = node as THREE.Mesh;
+    const role = classifyNodeName(node.name);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    if (role === 'J6') mesh.material = MAT_FLANGE_STEEL;
+    else if (role === 'J4' || role === 'J5' || role === 'BASE') mesh.material = MAT_DARK_DRIVE;
+    else if (role === 'J1' || role === 'J2' || role === 'J3') mesh.material = MAT_YASKAWA_BLUE;
+  });
+}
+
 /**
- * Loads the Yaskawa GP50 CAD GLB model from `public/models/gp50/GP50.glb`.
- * Inspects the scene hierarchy, determines actual node names and transforms,
- * and scales from meters to millimeters if necessary.
+ * Loads the real GP50 CAD assembly. The CAD hierarchy is inspected but is NOT
+ * flattened into one mesh; the original node transforms remain available for
+ * kinematic binding.
  */
 export async function loadGp50CadModel(): Promise<{ scene: THREE.Group; report: Gp50HierarchyReport } | null> {
-  if (cachedGltfScene && cachedReport) {
-    return { scene: cachedGltfScene, report: cachedReport };
-  }
-
+  if (cachedGltfScene && cachedReport) return { scene: cachedGltfScene, report: cachedReport };
   if (loadPromise) {
-    const s = await loadPromise;
-    if (s && cachedReport) return { scene: s, report: cachedReport };
-    return null;
+    const scene = await loadPromise;
+    return scene && cachedReport ? { scene, report: cachedReport } : null;
   }
-
-  const pathsToTry = [
-    '/models/gp50/GP50.glb',
-    '/models/gp50/gp50.glb',
-    'models/gp50/GP50.glb',
-    'models/gp50/gp50.glb'
-  ];
 
   loadPromise = (async () => {
-    isLoadAttempted = true;
     const loader = new GLTFLoader();
-
-    for (const url of pathsToTry) {
+    for (const url of ['/models/gp50/GP50.glb', '/models/gp50/gp50.glb', 'models/gp50/GP50.glb', 'models/gp50/gp50.glb']) {
       try {
-        const gltf = await new Promise<any>((resolve, reject) => {
-          loader.load(url, resolve, undefined, reject);
+        const gltf = await new Promise<any>((resolve, reject) => loader.load(url, resolve, undefined, reject));
+        if (!gltf?.scene) continue;
+
+        const scene = gltf.scene as THREE.Group;
+        const rawBbox = new THREE.Box3().setFromObject(scene);
+        const rawSize = rawBbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
+        const detectedScale = maxDim > 0 && maxDim < 10 ? 1000 : 1;
+        if (detectedScale !== 1) scene.scale.setScalar(detectedScale);
+        scene.updateMatrixWorld(true);
+
+        const bbox = new THREE.Box3().setFromObject(scene);
+        const size = bbox.getSize(new THREE.Vector3());
+        const nodeList: Gp50HierarchyReport['nodeList'] = [];
+        const mapping: Gp50HierarchyReport['mapping'] = {
+          base: null, sAxis_J1: null, lAxis_J2: null, uAxis_J3: null,
+          rAxis_J4: null, bAxis_J5: null, tlAxis_J6: null
+        };
+
+        scene.traverse(node => {
+          const role = classifyNodeName(node.name);
+          nodeList.push({
+            name: node.name,
+            type: node.type,
+            parentName: node.parent?.name || null,
+            position: [node.position.x, node.position.y, node.position.z],
+            assignedJoint: role
+          });
         });
 
-        if (gltf && gltf.scene) {
-          console.log(`[GP50 CAD] Successfully loaded actual CAD geometry from: ${url}`);
-          const scene: THREE.Group = gltf.scene;
+        const roleNodes = collectRoleNodes(scene);
+        mapping.base = chooseRepresentative(roleNodes.BASE, 'BASE')?.name || null;
+        mapping.sAxis_J1 = chooseRepresentative(roleNodes.J1, 'J1')?.name || null;
+        mapping.lAxis_J2 = chooseRepresentative(roleNodes.J2, 'J2')?.name || null;
+        mapping.uAxis_J3 = chooseRepresentative(roleNodes.J3, 'J3')?.name || null;
+        mapping.rAxis_J4 = chooseRepresentative(roleNodes.J4, 'J4')?.name || null;
+        mapping.bAxis_J5 = chooseRepresentative(roleNodes.J5, 'J5')?.name || null;
+        mapping.tlAxis_J6 = chooseRepresentative(roleNodes.J6, 'J6')?.name || null;
 
-          // 1. Inspect Bounding Box & Detect Scale
-          const rawBbox = new THREE.Box3().setFromObject(scene);
-          const rawSize = new THREE.Vector3();
-          rawBbox.getSize(rawSize);
-          const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
-
-          // If exported in meters (reach ~2.06m), scale to millimeters (2061mm)
-          let detectedScale = 1.0;
-          if (maxDim > 0 && maxDim < 10) {
-            detectedScale = 1000.0;
-            console.log(`[GP50 CAD] Model dimensions detected in METERS (${maxDim.toFixed(2)}m). Scaling by 1000 to simulation millimeters.`);
-            scene.scale.set(detectedScale, detectedScale, detectedScale);
-            scene.updateMatrixWorld(true);
-          } else {
-            console.log(`[GP50 CAD] Model dimensions detected in MILLIMETERS (${maxDim.toFixed(1)}mm). Scale factor: 1.0`);
-          }
-
-          const scaledBbox = new THREE.Box3().setFromObject(scene);
-          const scaledSize = new THREE.Vector3();
-          scaledBbox.getSize(scaledSize);
-
-          // 2. Deep Hierarchy Inspection & Node Logging
-          console.log('================================================================');
-          console.log('[GP50 CAD] ACTUAL GLB SCENE HIERARCHY INSPECTION:');
-          console.log(`[GP50 CAD] Overall Bounding Box Size: [${scaledSize.x.toFixed(1)}, ${scaledSize.y.toFixed(1)}, ${scaledSize.z.toFixed(1)}] mm`);
-          console.log('----------------------------------------------------------------');
-
-          const nodeList: Gp50HierarchyReport['nodeList'] = [];
-          const mapping: Gp50HierarchyReport['mapping'] = {
-            base: null,
-            sAxis_J1: null,
-            lAxis_J2: null,
-            uAxis_J3: null,
-            rAxis_J4: null,
-            bAxis_J5: null,
-            tlAxis_J6: null,
-          };
-
-          scene.traverse((node) => {
-            const role = classifyNodeName(node.name);
-            nodeList.push({
-              name: node.name,
-              type: node.type,
-              parentName: node.parent?.name || null,
-              position: [node.position.x, node.position.y, node.position.z],
-              assignedJoint: role,
-            });
-
-            console.log(
-              `  • Node: "${node.name}" | Type: ${node.type} | Parent: "${node.parent?.name || 'ROOT'}" | Role: ${role || 'UNASSIGNED'} | Pos: [${node.position.x.toFixed(1)}, ${node.position.y.toFixed(1)}, ${node.position.z.toFixed(1)}]`
-            );
-
-            if (role === 'BASE' && !mapping.base) mapping.base = node.name;
-            if (role === 'J1' && !mapping.sAxis_J1) mapping.sAxis_J1 = node.name;
-            if (role === 'J2' && !mapping.lAxis_J2) mapping.lAxis_J2 = node.name;
-            if (role === 'J3' && !mapping.uAxis_J3) mapping.uAxis_J3 = node.name;
-            if (role === 'J4' && !mapping.rAxis_J4) mapping.rAxis_J4 = node.name;
-            if (role === 'J5' && !mapping.bAxis_J5) mapping.bAxis_J5 = node.name;
-            if (role === 'J6' && !mapping.tlAxis_J6) mapping.tlAxis_J6 = node.name;
-
-            // Enable cast & receive shadows on all CAD meshes
-            if ((node as THREE.Mesh).isMesh) {
-              const mesh = node as THREE.Mesh;
-              mesh.castShadow = true;
-              mesh.receiveShadow = true;
-
-              // Ensure high-grade visual finish
-              if (role === 'J6') {
-                mesh.material = MAT_FLANGE_STEEL;
-              } else if (role === 'J4' || role === 'J5') {
-                mesh.material = MAT_DARK_DRIVE;
-              } else if (role === 'BASE') {
-                mesh.material = MAT_DARK_DRIVE;
-              } else if (role === 'J1' || role === 'J2' || role === 'J3') {
-                mesh.material = MAT_YASKAWA_BLUE;
-              }
-            }
-          });
-
-          console.log('----------------------------------------------------------------');
-          console.log('[GP50 CAD] JOINT MAPPING SUMMARY:');
-          console.log(`  Base:       ${mapping.base || '(auto-group unassigned root meshes)'}`);
-          console.log(`  J1 (S_AXIS): ${mapping.sAxis_J1 || 'NOT FOUND'}`);
-          console.log(`  J2 (L_AXIS): ${mapping.lAxis_J2 || 'NOT FOUND'}`);
-          console.log(`  J3 (U_AXIS): ${mapping.uAxis_J3 || 'NOT FOUND'}`);
-          console.log(`  J4 (R_AXIS): ${mapping.rAxis_J4 || 'NOT FOUND'}`);
-          console.log(`  J5 (B_AXIS): ${mapping.bAxis_J5 || 'NOT FOUND'}`);
-          console.log(`  J6 (TLAXIS): ${mapping.tlAxis_J6 || 'NOT FOUND'}`);
-          console.log('================================================================');
-
-          cachedReport = {
-            loaded: true,
-            filePath: url,
-            detectedScale,
-            boundingBox: {
-              min: [scaledBbox.min.x, scaledBbox.min.y, scaledBbox.min.z],
-              max: [scaledBbox.max.x, scaledBbox.max.y, scaledBbox.max.z],
-              size: [scaledSize.x, scaledSize.y, scaledSize.z],
-            },
-            nodeList,
-            mapping,
-          };
-
-          cachedGltfScene = scene;
-          return scene;
-        }
-      } catch (err: any) {
-        console.warn(`[GP50 CAD] Notice while checking "${url}":`, err?.message || err);
+        applyGp50Materials(scene);
+        cachedReport = {
+          loaded: true,
+          filePath: url,
+          detectedScale,
+          boundingBox: {
+            min: [bbox.min.x, bbox.min.y, bbox.min.z],
+            max: [bbox.max.x, bbox.max.y, bbox.max.z],
+            size: [size.x, size.y, size.z]
+          },
+          nodeList,
+          mapping
+        };
+        cachedGltfScene = scene;
+        console.info('[GP50 CAD] Loaded real assembly', mapping);
+        return scene;
+      } catch (error) {
+        console.warn('[GP50 CAD] Load attempt failed:', url, error);
       }
     }
-
-    console.warn('[GP50 CAD] No actual CAD file found yet at public/models/gp50/GP50.glb.');
     return null;
   })();
 
-  const res = await loadPromise;
-  if (res && cachedReport) {
-    return { scene: res, report: cachedReport };
-  }
-  return null;
+  const scene = await loadPromise;
+  return scene && cachedReport ? { scene, report: cachedReport } : null;
 }
 
 /**
- * Binds the extracted GP50 CAD components to the authoritative kinematic RobotArmRig.
- * Preserves the FK/IK mathematical source of truth while replacing procedural arm geometry.
+ * Binds the real CAD parts to the existing kinematic rig without the previous
+ * "first matching node + attach()" behavior.
+ *
+ * Every GP50 axis is represented by a real CAD pivot node. All CAD parts
+ * classified for that axis are placed on the corresponding kinematic level,
+ * so downstream axes inherit upstream motion.
  */
 export function bindGp50CadToKinematicRig(
   rig: RobotArmRig,
@@ -322,75 +218,98 @@ export function bindGp50CadToKinematicRig(
   hideProceduralMeshes?: () => void
 ): boolean {
   try {
-    // 1. Find all axis components from the CAD scene
-    const nodes: Gp50NodeClassification = {
-      unassigned: [],
+    cadScene.updateMatrixWorld(true);
+    const roleNodes = collectRoleNodes(cadScene);
+    const reps = {
+      J1: chooseRepresentative(roleNodes.J1, 'J1'),
+      J2: chooseRepresentative(roleNodes.J2, 'J2'),
+      J3: chooseRepresentative(roleNodes.J3, 'J3'),
+      J4: chooseRepresentative(roleNodes.J4, 'J4'),
+      J5: chooseRepresentative(roleNodes.J5, 'J5'),
+      J6: chooseRepresentative(roleNodes.J6, 'J6'),
     };
 
-    cadScene.traverse((node) => {
-      const role = classifyNodeName(node.name);
-      if (role === 'J1' && !nodes.sAxis) nodes.sAxis = node;
-      else if (role === 'J2' && !nodes.lAxis) nodes.lAxis = node;
-      else if (role === 'J3' && !nodes.uAxis) nodes.uAxis = node;
-      else if (role === 'J4' && !nodes.rAxis) nodes.rAxis = node;
-      else if (role === 'J5' && !nodes.bAxis) nodes.bAxis = node;
-      else if (role === 'J6' && !nodes.tlAxis) nodes.tlAxis = node;
-      else if (role === 'BASE' && !nodes.base) nodes.base = node;
-    });
+    if (!reps.J1 || !reps.J2 || !reps.J3 || !reps.J4 || !reps.J5 || !reps.J6) {
+      console.error('[GP50 CAD] Missing one or more real axis pivot nodes', reps);
+      return false;
+    }
 
-    // Make sure all global matrices are up to date
-    cadScene.updateMatrixWorld(true);
-    rig.baseGroup.updateMatrixWorld(true);
+    hideProceduralMeshes?.();
 
     const [j1, j2, j3, j4, j5, j6] = rig.jointGroups;
 
-    // Attach Base CAD component (rigidly stationary on base anchor)
-    if (nodes.base) {
-      rig.baseGroup.attach(nodes.base);
-    } else {
-      // If base was not a separate named node, attach the remaining root of cadScene
-      rig.baseGroup.attach(cadScene);
-    }
+    // Use the CAD axis origins as the actual zero-pose joint centers.
+    const pivotsWorld = [reps.J1, reps.J2, reps.J3, reps.J4, reps.J5, reps.J6]
+      .map(node => node.getWorldPosition(new THREE.Vector3()));
 
-    // Attach J1: S_AXIS
-    if (nodes.sAxis) {
-      j1.attach(nodes.sAxis);
-    }
+    const base = rig.baseGroup;
+    const pBase = pivotsWorld.map(p => base.worldToLocal(p.clone()));
 
-    // Attach J2: L_AXIS
-    if (nodes.lAxis) {
-      j2.attach(nodes.lAxis);
-    }
+    j1.position.copy(pBase[0]);
+    j2.position.copy(j1.worldToLocal(pBase[1].clone()));
+    j3.position.copy(j2.worldToLocal(pBase[2].clone()));
+    j4.position.copy(j3.worldToLocal(pBase[3].clone()));
+    j5.position.copy(j4.worldToLocal(pBase[4].clone()));
+    j6.position.copy(j5.worldToLocal(pBase[5].clone()));
 
-    // Attach J3: U_AXIS
-    if (nodes.uAxis) {
-      j3.attach(nodes.uAxis);
+    // Preserve the CAD zero orientation as a baseline for each joint. The
+    // pose updater multiplies the commanded joint rotation onto this basis.
+    const jointBases: THREE.Quaternion[] = [];
+    const joints = [j1, j2, j3, j4, j5, j6];
+    for (let i = 0; i < joints.length; i++) {
+      const worldQ = reps[(['J1','J2','J3','J4','J5','J6'] as const)[i]]!.getWorldQuaternion(new THREE.Quaternion());
+      const parent = i === 0 ? base : joints[i - 1];
+      parent.updateMatrixWorld(true);
+      const parentWorldQ = parent.getWorldQuaternion(new THREE.Quaternion());
+      jointBases.push(parentWorldQ.invert().multiply(worldQ));
     }
+    (rig as RobotArmRig & { cadJointBaseQuaternions?: THREE.Quaternion[] }).cadJointBaseQuaternions = jointBases;
 
-    // Attach J4: R_AXIS
-    if (nodes.rAxis) {
-      j4.attach(nodes.rAxis);
-    }
+    // The GLB often contains CAD objects as siblings. Move only top-level
+    // classified objects so children are not detached twice. World transforms
+    // are preserved by Object3D.attach().
+    const classified = roleNodes;
+    const roleToGroup: Record<Exclude<Gp50Role, null>, THREE.Object3D> = {
+      BASE: base, J1: j1, J2: j2, J3: j3, J4: j4, J5: j5, J6: j6
+    };
 
-    // Attach J5: B_AXIS
-    if (nodes.bAxis) {
-      j5.attach(nodes.bAxis);
-    }
+    const alreadyMoved = new Set<THREE.Object3D>();
+    (Object.keys(classified) as Array<Exclude<Gp50Role, null>>).forEach(role => {
+      for (const node of classified[role]) {
+        if (alreadyMoved.has(node)) continue;
+        let ancestor = node.parent;
+        let ownedByAnotherRole = false;
+        while (ancestor && ancestor !== cadScene) {
+          if (classifyNodeName(ancestor.name)) {
+            ownedByAnotherRole = true;
+            break;
+          }
+          ancestor = ancestor.parent;
+        }
+        if (ownedByAnotherRole) continue;
+        roleToGroup[role].attach(node);
+        alreadyMoved.add(node);
+      }
+    });
 
-    // Attach J6: TLAXIS
-    if (nodes.tlAxis) {
-      j6.attach(nodes.tlAxis);
-    }
+    // Anything not classified is retained as a rigid part of the base.
+    const leftovers: THREE.Object3D[] = [];
+    cadScene.traverse(node => {
+      if (node === cadScene || alreadyMoved.has(node)) return;
+      if (!classifyNodeName(node.name) && (node as THREE.Mesh).isMesh) leftovers.push(node);
+    });
+    leftovers.forEach(node => base.attach(node));
 
-    // 2. Hide or remove the procedural GP50 geometry so there is strictly ONE robot
-    if (hideProceduralMeshes) {
-      hideProceduralMeshes();
-    }
+    cadScene.removeFromParent();
+    base.updateMatrixWorld(true);
 
-    console.log('[GP50 CAD] Successfully bound CAD nodes: S_AXIS→J1, L_AXIS→J2, U_AXIS→J3, R_AXIS→J4, B_AXIS→J5, TLAXIS→J6');
+    console.info('[GP50 CAD] Bound CAD pivots to real GP50 axis centers', {
+      pivots: pivotsWorld.map(p => p.toArray()),
+      mapping: cachedReport?.mapping
+    });
     return true;
-  } catch (err) {
-    console.error('[GP50 CAD] Error binding CAD nodes to kinematic rig:', err);
+  } catch (error) {
+    console.error('[GP50 CAD] Failed to bind real CAD hierarchy:', error);
     return false;
   }
 }
