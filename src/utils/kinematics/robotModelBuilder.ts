@@ -173,18 +173,20 @@ export function buildRobotKinematicModel(
   tool?: ToolCenterPoint,
   mountConfig?: RobotMountConfig
 ): RobotKinematicModel {
-  // Proportional industrial link lengths based on verified kinematic data
+  // Keep the analytical model conservative and GP50-specific. The real CAD
+  // assembly supplies the visual joint centers at runtime; these values are
+  // only the mathematical fallback used before CAD calibration is attached.
   const reach = spec.reachMm || 2061;
-  const d1 = 450; // base plate to shoulder axis
-  const a1 = 0;   // inline shoulder
-  const l2 = Math.round(reach * 0.42 * 10) / 10; // shoulder to elbow
-  const l3 = Math.round(reach * 0.40 * 10) / 10; // elbow to wrist center
-  const l4 = 200; // wrist center to tool mount flange
+  const d1 = 450;
+  const a1 = 0;
+  const l2 = Math.round(reach * 0.42 * 10) / 10;
+  const l3 = Math.round(reach * 0.40 * 10) / 10;
+  const l4 = 200;
 
   const defaultLimits = [
     { minDeg: -180, maxDeg: 180, maxVelocityDegPerSec: 180 },
-    { minDeg: -90, maxDeg: 135, maxVelocityDegPerSec: 180 },
-    { minDeg: -175, maxDeg: 250, maxVelocityDegPerSec: 180 },
+    { minDeg: -90, maxDeg: 135, maxVelocityDegPerSec: 178 },
+    { minDeg: -80, maxDeg: 206, maxVelocityDegPerSec: 178 },
     { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 250 },
     { minDeg: -125, maxDeg: 125, maxVelocityDegPerSec: 250 },
     { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 360 }
