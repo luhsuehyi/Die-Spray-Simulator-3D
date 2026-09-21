@@ -263,7 +263,34 @@ export function bindGp50CadToKinematicRig(
       const parentWorldQ = parent.getWorldQuaternion(new THREE.Quaternion());
       jointBases.push(parentWorldQ.invert().multiply(worldQ));
     }
-    (rig as RobotArmRig & { cadJointBaseQuaternions?: THREE.Quaternion[] }).cadJointBaseQuaternions = jointBases;
+    // The CAD assembly's zero pose is the visual reference. Wrap the existing
+    // kinematic updater so FK/IK remains the source of truth, while the CAD
+    // assembly uses the real joint-frame orientation.
+    const originalUpdatePose = rig.updatePose;
+    rig.updatePose = (...args) => {
+      originalUpdatePose(...args);
+      const pose: any = args[0];
+      let values: number[] | null = null;
+      if (Array.isArray(pose) && pose.length === 6) values = pose;
+      else if (pose && Array.isArray(pose.jointsDeg)) values = pose.jointsDeg;
+      else if (Array.isArray(args[2])) values = args[2];
+      if (!values || values.length !== 6) return;
+
+      const axes: THREE.Vector3[] = [
+        new THREE.Vector3(0, 0, 1),
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 0, 1),
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 0, 1),
+      ];
+      const q = new THREE.Quaternion();
+      for (let i = 0; i < 6; i++) {
+        q.setFromAxisAngle(axes[i], values[i] * Math.PI / 180);
+        joints[i].quaternion.copy(jointBases[i]).multiply(q);
+      }
+      base.updateMatrixWorld(true);
+    };
 
     // The GLB often contains CAD objects as siblings. Move only top-level
     // classified objects so children are not detached twice. World transforms
