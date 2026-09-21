@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:kinematics": "tsx src/utils/kinematics/kinematics.test.ts"
+    "test:kinematics": "tsx src/utils/kinematics/kinematics.test.ts",
+    "test:gp50": "tsx src/utils/kinematics/gp50Cad.test.ts",
+    "build:gp50-asset": "python3 tools/build_gp50_asset.py public/models/gp50/GP50.glb public/models/gp50/GP50_clean.glb public/models/gp50/gp50_manifest.json"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

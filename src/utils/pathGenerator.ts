@@ -2,6 +2,7 @@ import { Waypoint } from '../types/path';
 import { DieModel } from '../types/die';
 import { RobotModelSpec, RobotMountType, ToolCenterPoint, HpdcSequenceState, RobotMountConfig } from '../types/robot';
 import { solveInverseKinematics } from './kinematics';
+import { getDefaultSeedJoints } from './waypointJoints';
 
 export interface SprayIntentConfig {
   selectedZones: {
@@ -503,9 +504,7 @@ export function generatePathFromIntent(
     rotationDeg: 0
   };
 
-  let seedJoints: [number, number, number, number, number, number] = isTop
-    ? [90.0, 130.0, -145.0, 0.0, 15.0, 0.0]
-    : [0, 0, 0, 0, 0, 0];
+  let seedJoints: [number, number, number, number, number, number] = getDefaultSeedJoints(robot, isTop);
 
   for (const wp of waypoints) {
     const ik = solveInverseKinematics(

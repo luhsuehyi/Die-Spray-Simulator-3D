@@ -4,6 +4,7 @@ import { DieCastingMachine } from '../types/machine';
 import { DieModel } from '../types/die';
 import { CollisionAuditResult } from '../types/spray';
 import { forwardKinematics } from './kinematics';
+import { resolveWaypointJoints } from './waypointJoints';
 
 export function runCollisionAudit(
   waypoints: Waypoint[],
@@ -32,8 +33,10 @@ export function runCollisionAudit(
     [-tbCenterH, tbCenterV]
   ];
 
-  for (const wp of waypoints) {
-    const fk = forwardKinematics(wp.jointAnglesDeg || [0, 0, 0, 0, 0, 0], robotSpec, undefined, mountConfig);
+  const resolvedJoints = resolveWaypointJoints(waypoints, robotSpec, undefined, mountConfig);
+  for (let wpi = 0; wpi < waypoints.length; wpi++) {
+    const wp = waypoints[wpi];
+    const fk = forwardKinematics(resolvedJoints[wpi], robotSpec, undefined, mountConfig);
     const tcp = [wp.x, wp.y, wp.z] as [number, number, number];
     const wrist = fk.jointPositions.wristYaw;
     const elbow = fk.jointPositions.elbow;

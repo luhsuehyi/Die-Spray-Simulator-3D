@@ -76,8 +76,11 @@ export function runKinematicsTests(): { total: number; passed: number; failed: n
 
     // J1 rotation moves TCP along a circle in the X-Z (or X-Y) plane
     const fkRotJ1 = computeForwardKinematics([90, 0, 0, 0, 0, 0], model);
-    const radDistZero = Math.hypot(fkZero.tcpPosition[0], fkZero.tcpPosition[2]);
-    const radDistRot = Math.hypot(fkRotJ1.tcpPosition[0], fkRotJ1.tcpPosition[2]);
+    // Radial distance is measured from the J1 axis (through the robot base), not from the world origin,
+    // so it holds for arms whose TCP is offset from the J1 axis at the zero pose (CAD-measured GP50).
+    const [axisX, , axisZ] = model.baseTransform.position;
+    const radDistZero = Math.hypot(fkZero.tcpPosition[0] - axisX, fkZero.tcpPosition[2] - axisZ);
+    const radDistRot = Math.hypot(fkRotJ1.tcpPosition[0] - axisX, fkRotJ1.tcpPosition[2] - axisZ);
     assert(Math.abs(radDistZero - radDistRot) < 2.0, suite, 'Pure J1 rotation maintains radial distance from base axis');
   }
 

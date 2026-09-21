@@ -10,6 +10,7 @@ import {
   Vector3Tuple
 } from '../../types/kinematics';
 import { DEG2RAD, Matrix4Utils } from './matrix4';
+import { computeChainForwardKinematics } from './cadChainKinematics';
 
 /**
  * Computes forward kinematics for a 6-DOF articulated industrial robot.
@@ -23,6 +24,9 @@ export function computeForwardKinematics(
   jointsDeg: [number, number, number, number, number, number],
   model: RobotKinematicModel
 ): KinematicFKResult {
+  // CAD-measured chain (e.g. Yaskawa GP50): exact FK on the measured pivots/axes.
+  if (model.cadChain) return computeChainForwardKinematics(jointsDeg, model);
+
   const [j1, j2, j3, j4, j5, j6] = jointsDeg;
   const th1 = j1 * DEG2RAD;
   const th2 = j2 * DEG2RAD;

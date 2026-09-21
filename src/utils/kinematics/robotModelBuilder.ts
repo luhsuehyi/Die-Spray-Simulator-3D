@@ -13,6 +13,7 @@ import {
 } from '../../types/kinematics';
 import { RobotModelSpec, RobotMountConfig, ToolCenterPoint } from '../../types/robot';
 import { DEG2RAD, Matrix4Utils, RAD2DEG } from './matrix4';
+import { getCadChainForRobot } from './gp50CadChain';
 
 /**
  * Derives the 4x4 mounting transformation matrix T_base for any mount configuration.
@@ -253,6 +254,32 @@ export function buildRobotKinematicModel(
   const baseTransform = buildMountTransform(spec, mountConfig);
   const toolTransform = buildToolTransform(tool);
 
+  // Robots with a CAD-measured chain (Yaskawa GP50) use it for FK/IK and rendering.
+  // `links` is then informational only (derived from the CAD pivots), never a proportional guess.
+  const cadChain = getCadChainForRobot(spec);
+  let links = {
+    baseHeightMm: d1,
+    shoulderOffsetMm: a1,
+    upperArmMm: l2,
+    forearmMm: l3,
+    flangeMm: l4
+  };
+  if (cadChain) {
+    const [j1, j2, j3, j4] = cadChain.joints;
+    void j1;
+    links = {
+      baseHeightMm: j2.offsetMm[2],
+      shoulderOffsetMm: j2.offsetMm[0],
+      upperArmMm: Math.hypot(j3.offsetMm[0], j3.offsetMm[1], j3.offsetMm[2]),
+      forearmMm: Math.hypot(j4.offsetMm[0], j4.offsetMm[1], j4.offsetMm[2]),
+      flangeMm: Math.hypot(cadChain.flangeOffsetMm[0], cadChain.flangeOffsetMm[1], cadChain.flangeOffsetMm[2])
+    };
+    for (let i = 0; i < 6; i++) {
+      const cj = cadChain.joints[i];
+      joints[i].axis = [cj.axis[0] * cj.sign, cj.axis[1] * cj.sign, cj.axis[2] * cj.sign];
+    }
+  }
+
   return {
     id: spec.id,
     name: spec.name,
@@ -262,14 +289,9 @@ export function buildRobotKinematicModel(
     repeatabilityMm: spec.repeatabilityMm,
     degreesOfFreedom: 6,
     joints,
-    links: {
-      baseHeightMm: d1,
-      shoulderOffsetMm: a1,
-      upperArmMm: l2,
-      forearmMm: l3,
-      flangeMm: l4
-    },
+    links,
     baseTransform,
-    toolTransform
+    toolTransform,
+    ...(cadChain ? { cadChain } : {})
   };
 }

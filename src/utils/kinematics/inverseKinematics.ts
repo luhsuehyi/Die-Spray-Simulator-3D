@@ -10,6 +10,7 @@ import {
   Vector3Tuple
 } from '../../types/kinematics';
 import { DEG2RAD, Matrix4Utils, normalizeAngleDeg, RAD2DEG } from './matrix4';
+import { solveChainInverseKinematics } from './cadChainKinematics';
 
 /**
  * Analytical closed-form Inverse Kinematics solver for 6-axis industrial articulated robots.
@@ -25,6 +26,9 @@ export function solveInverseKinematicsAnalytical(
   model: RobotKinematicModel,
   seedJointsDeg: [number, number, number, number, number, number] = [0, 0, 0, 0, 0, 0]
 ): KinematicIKResult {
+  // CAD-measured chain (e.g. Yaskawa GP50): numerical IK on the exact same chain used by FK.
+  if (model.cadChain) return solveChainInverseKinematics(targetTcpPos, targetTcpEulerDeg, model, seedJointsDeg);
+
   // 1. Build World TCP 4x4 matrix
   const tWorldTcp = Matrix4Utils.fromTranslationAndEuler(targetTcpPos, targetTcpEulerDeg);
 

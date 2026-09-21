@@ -4,7 +4,7 @@ import { DieModel } from '../../types/die';
 import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig } from '../../types/robot';
 import { buildRobotKinematicModel } from '../../utils/kinematics/robotModelBuilder';
 import { Matrix4Tuple } from '../../types/kinematics';
-import { loadGp50CadModel, bindGp50CadToKinematicRig } from '../../utils/gp50CadLoader';
+import { loadGp50CadParts, attachGp50CadParts } from '../../utils/gp50CadLoader';
 
 // Material Cache to avoid recreating shaders every frame
 export const MAT = {
@@ -1079,6 +1079,24 @@ export function createRobotArmRig(
   setThreeMatrix4FromRowMajor(tcpGroup.matrix, model.toolTransform.matrix);
   flangeGroup.add(tcpGroup);
 
+  // CAD-measured chain (Yaskawa GP50): pivots, flange pose and joint axes come straight from the
+  // CAD, replacing the proportional a1/d1/l2/l3/l4 layout above. FK/IK use the same chain.
+  const cad = model.cadChain;
+  const cadAxes: THREE.Vector3[] = [];
+  const cadSigns: number[] = [];
+  const allJointGroups = [j1Group, j2Group, j3Group, j4Group, j5Group, j6Group];
+  if (cad) {
+    cad.joints.forEach((cj, i) => {
+      allJointGroups[i].position.set(cj.offsetMm[0], cj.offsetMm[1], cj.offsetMm[2]);
+      cadAxes.push(new THREE.Vector3(cj.axis[0], cj.axis[1], cj.axis[2]).normalize());
+      cadSigns.push(cj.sign);
+    });
+    flangeGroup.position.set(cad.flangeOffsetMm[0], cad.flangeOffsetMm[1], cad.flangeOffsetMm[2]);
+    const fm = new THREE.Matrix4();
+    setThreeMatrix4FromRowMajor(fm, cad.flangeRotation);
+    flangeGroup.quaternion.setFromRotationMatrix(fm);
+  }
+
   // =========================================================================
   // 2. INDUSTRIAL ROBOT 3D MESH GEOMETRIES & ATTACHMENTS
   // =========================================================================
@@ -1086,6 +1104,8 @@ export function createRobotArmRig(
   // Track procedural arm meshes to hide/remove them when actual CAD model is loaded
   const proceduralArmMeshes: THREE.Object3D[] = [];
   const addProcedural = <T extends THREE.Object3D>(parent: THREE.Object3D, mesh: T): T => {
+    // CAD robots (GP50) never get the procedural arm: the CAD assembly is the only visible robot.
+    if (cad) return mesh;
     proceduralArmMeshes.push(mesh);
     parent.add(mesh);
     return mesh;
@@ -1236,7 +1256,7 @@ export function createRobotArmRig(
   flangePlateGeo.translate(0, 0, 9);
   const flangePlateMesh = new THREE.Mesh(flangePlateGeo, MAT.platenSteel);
   flangePlateMesh.castShadow = true;
-  flangeGroup.add(flangePlateMesh);
+  if (!cad) flangeGroup.add(flangePlateMesh); // the CAD T-axis already contains the flange
 
   const toolDistZ = tool.z || 220;
   const stemH = Math.max(20, toolDistZ - 30);
@@ -1341,6 +1361,16 @@ export function createRobotArmRig(
 
     const [j1, j2, j3, j4, j5, j6] = jDeg;
 
+    if (cad) {
+      // Rotate each CAD joint about its measured axis (same chain as FK/IK)
+      const angles = [j1, j2, j3, j4, j5, j6];
+      for (let i = 0; i < 6; i++) {
+        allJointGroups[i].quaternion.setFromAxisAngle(cadAxes[i], cadSigns[i] * angles[i] * DEG2RAD);
+      }
+      baseGroup.updateMatrixWorld(true);
+      return;
+    }
+
     // Apply exact joint rotations in local joint frames
     j1Group.rotation.set(0, 0, j1 * DEG2RAD, 'ZYX');
     j2Group.rotation.set(0, j2 * DEG2RAD, 0, 'ZYX');
@@ -1368,24 +1398,16 @@ export function createRobotArmRig(
     dispose
   };
 
-  // If Yaskawa GP50, load actual CAD geometry (S_AXIS, L_AXIS, U_AXIS, R_AXIS, B_AXIS, TLAXIS)
-  // and bind to the authoritative kinematic rig, replacing procedural meshes.
-  if (robot.id === 'yaskawa-gp50') {
-    loadGp50CadModel().then(result => {
-      if (result && result.scene) {
-        bindGp50CadToKinematicRig(
-          rig,
-          result.scene.clone(true),
-          () => {
-            proceduralArmMeshes.forEach(mesh => {
-              mesh.visible = false;
-              if (mesh.parent) mesh.parent.remove(mesh);
-            });
-            updatePose(lastJointsDeg);
-          }
-        );
-      }
-    });
+  // Robots with a CAD-measured chain (Yaskawa GP50): mount the real CAD parts on the rig.
+  // No procedural fallback: if the asset fails to load, a visible error is raised (see
+  // GP50_CAD_STATUS_EVENT, shown as a banner by SimulationCanvas) and the console reports why.
+  if (cad) {
+    loadGp50CadParts()
+      .then(parts => {
+        attachGp50CadParts(baseGroup, allJointGroups, parts);
+        updatePose(lastJointsDeg);
+      })
+      .catch(() => { /* already reported via console.error + status event */ });
   }
 
   return rig;

@@ -35,6 +35,7 @@ import { runCollisionAudit } from '../utils/collisionDetection';
 import { calculateTrajectorySegments } from '../utils/machineCalculations';
 import { solveInverseKinematics, forwardKinematics } from '../utils/kinematics';
 import { SprayIntentConfig, DEFAULT_SPRAY_INTENT, generatePathFromIntent } from '../utils/pathGenerator';
+import { resolveWaypointJoints } from '../utils/waypointJoints';
 import { PositionCandidate, diagnoseCellProblems } from '../utils/robotPositionAdvisor';
 import { evaluateCellRealism } from '../utils/cellRealism';
 import {
@@ -1230,12 +1231,18 @@ export function useSimulationStore(): SimulationStore {
   }, [storeState.waypoints]);
 
   // Determine current active waypoint and position based on currentTimeSec
+  // Joint angles per waypoint (re-solved on the CAD chain for robots that have one, e.g. GP50)
+  const resolvedWaypointJoints = useMemo(
+    () => resolveWaypointJoints(storeState.waypoints, storeState.robot, storeState.tool, storeState.robotMountConfig),
+    [storeState.waypoints, storeState.robot, storeState.tool, storeState.robotMountConfig]
+  );
+
   const { activeWaypointIndex, currentPosition, currentEuler, currentInterpJoints, activeMotionType } = useMemo(() => {
     const time = storeState.currentTimeSec;
     const segs = trajectoryPlan.segments;
     if (segs.length === 0) {
       const first = storeState.waypoints[0] || DEFAULT_WAYPOINTS[0];
-      const defaultJoints: [number, number, number, number, number, number] = first.jointAnglesDeg || [90, 130, -145, 0, 15, 0];
+      const defaultJoints: [number, number, number, number, number, number] = resolvedWaypointJoints[0] || [0, 0, 0, 0, 0, 0];
       return {
         activeWaypointIndex: 0,
         currentPosition: [first.x, first.y, first.z] as [number, number, number],
@@ -1271,8 +1278,8 @@ export function useSimulationStore(): SimulationStore {
     const curRy = wStart.ry + (wEnd.ry - wStart.ry) * progress;
     const curRz = wStart.rz + (wEnd.rz - wStart.rz) * progress;
 
-    const jStart: [number, number, number, number, number, number] = wStart.jointAnglesDeg || [90, 130, -145, 0, 15, 0];
-    const jEnd: [number, number, number, number, number, number] = wEnd.jointAnglesDeg || jStart;
+    const jStart: [number, number, number, number, number, number] = resolvedWaypointJoints[activeSeg.startIndex] || resolvedWaypointJoints[0];
+    const jEnd: [number, number, number, number, number, number] = resolvedWaypointJoints[activeSeg.endIndex] || jStart;
     const interpJoints: [number, number, number, number, number, number] = [
       jStart[0] + (jEnd[0] - jStart[0]) * progress,
       jStart[1] + (jEnd[1] - jStart[1]) * progress,
@@ -1289,7 +1296,7 @@ export function useSimulationStore(): SimulationStore {
       currentInterpJoints: interpJoints,
       activeMotionType: wEnd.motionType || 'LINEAR'
     };
-  }, [storeState.currentTimeSec, trajectoryPlan, storeState.waypoints]);
+  }, [storeState.currentTimeSec, trajectoryPlan, storeState.waypoints, resolvedWaypointJoints]);
 
   // Inverse Kinematics for active pose with smooth joint-space tracking
   const currentRobotPose = useMemo(() => {

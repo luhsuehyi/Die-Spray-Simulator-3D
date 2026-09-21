@@ -1,7 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useSimulationStore } from '../../store/simulationStore';
 import { forwardKinematics } from '../../utils/kinematics';
+import { GP50_CAD_STATUS_EVENT, Gp50CadStatus } from '../../utils/gp50CadLoader';
 import {
   buildToyoMachine,
   buildFactoryEquipment,
@@ -22,6 +23,14 @@ interface MistSeed {
 export const SimulationCanvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const store = useSimulationStore();
+
+  // Visible status for the GP50 CAD asset (there is deliberately no procedural fallback robot)
+  const [cadStatus, setCadStatus] = useState<{ status: Gp50CadStatus; message?: string }>({ status: 'ready' });
+  useEffect(() => {
+    const onStatus = (e: Event) => setCadStatus((e as CustomEvent).detail);
+    window.addEventListener(GP50_CAD_STATUS_EVENT, onStatus);
+    return () => window.removeEventListener(GP50_CAD_STATUS_EVENT, onStatus);
+  }, []);
   const {
     machine,
     die,
@@ -845,6 +854,18 @@ export const SimulationCanvas: React.FC = () => {
       ref={containerRef}
       id="simulation-3d-canvas-container"
       className="relative w-full h-full cursor-grab active:cursor-grabbing select-none overflow-hidden"
-    />
+    >
+      {store.robot.id === 'yaskawa-gp50' && cadStatus.status !== 'ready' && (
+        <div
+          className={`absolute left-3 top-3 z-20 max-w-[520px] rounded-md px-3 py-2 text-xs font-mono pointer-events-none ${
+            cadStatus.status === 'failed' ? 'bg-red-700/90 text-white' : 'bg-slate-800/80 text-slate-100'
+          }`}
+        >
+          {cadStatus.status === 'failed'
+            ? `GP50 CAD model failed to load — no substitute robot is drawn. ${cadStatus.message ?? ''}`
+            : 'Loading Yaskawa GP50 CAD model…'}
+        </div>
+      )}
+    </div>
   );
 };
