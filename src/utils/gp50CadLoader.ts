@@ -109,16 +109,15 @@ function removeFromParent(node: THREE.Object3D) {
   if (node.parent) node.parent.remove(node);
 }
 
-function applyGp50Materials(scene: THREE.Object3D) {
+function preserveGp50Materials(scene: THREE.Object3D) {
   scene.traverse(node => {
     if (!(node as THREE.Mesh).isMesh) return;
     const mesh = node as THREE.Mesh;
-    const role = classifyNodeName(node.name);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    if (role === 'J6') mesh.material = MAT_FLANGE_STEEL;
-    else if (role === 'J4' || role === 'J5' || role === 'BASE') mesh.material = MAT_DARK_DRIVE;
-    else if (role === 'J1' || role === 'J2' || role === 'J3') mesh.material = MAT_YASKAWA_BLUE;
+    // Intentionally preserve the materials embedded in the real GP50 GLB.
+    // Recoloring meshes by joint role makes the CAD model visually unlike
+    // the supplied Yaskawa assembly.
   });
 }
 
@@ -177,7 +176,7 @@ export async function loadGp50CadModel(): Promise<{ scene: THREE.Group; report: 
         mapping.bAxis_J5 = chooseRepresentative(roleNodes.J5, 'J5')?.name || null;
         mapping.tlAxis_J6 = chooseRepresentative(roleNodes.J6, 'J6')?.name || null;
 
-        applyGp50Materials(scene);
+        preserveGp50Materials(scene);
         cachedReport = {
           loaded: true,
           filePath: url,
@@ -321,15 +320,14 @@ export function bindGp50CadToKinematicRig(
       }
     });
 
-    // Anything not classified is retained as a rigid part of the base.
-    const leftovers: THREE.Object3D[] = [];
-    cadScene.traverse(node => {
-      if (node === cadScene || alreadyMoved.has(node)) return;
-      if (!classifyNodeName(node.name) && (node as THREE.Mesh).isMesh) leftovers.push(node);
-    });
-    leftovers.forEach(node => base.attach(node));
+    // Preserve every remaining CAD component. The previous implementation
+    // accidentally dropped/left unbound CAD siblings, which made the visible
+    // robot incomplete and unlike the source assembly.
+    const remainingRoots = [...cadScene.children];
+    for (const child of remainingRoots) {
+      if (child.parent === cadScene) base.attach(child);
+    }
 
-    cadScene.removeFromParent();
     base.updateMatrixWorld(true);
 
     console.info('[GP50 CAD] Bound CAD pivots to real GP50 axis centers', {
