@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Factory,
   Compass,
@@ -17,6 +17,7 @@ import {
   Wrench,
   Sliders,
   ChevronDown,
+  ChevronUp,
   Info,
   Scale,
   ArrowUp,
@@ -27,13 +28,24 @@ import {
   RotateCcw as RotateCounterCw,
   Camera,
   Eye,
-  Cpu
+  Cpu,
+  Gauge,
+  Zap,
+  Droplet,
+  ShieldAlert,
+  Settings2,
+  Boxes,
+  FileText,
+  Check,
+  Activity,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
-import { MACHINE_PRESETS, ROBOT_PRESETS, SPRAY_HEAD_PRESETS } from '../../utils/presets';
+import { MACHINE_PRESETS, ROBOT_PRESETS, SPRAY_HEAD_PRESETS, EOAT_PRESETS } from '../../utils/presets';
+import { evaluateEoatCompatibility } from '../../utils/eoatCompatibility';
 import { SAMPLE_CAST_PARTS } from '../../utils/castPartPresets';
 import { diagnoseCellProblems } from '../../utils/robotPositionAdvisor';
-import { SprayHeadType, RobotMountType } from '../../types/robot';
+import { SprayHeadType, RobotMountType, EoatType } from '../../types/robot';
 
 export const ManufacturingPanel: React.FC = () => {
   const {
@@ -90,6 +102,16 @@ export const ManufacturingPanel: React.FC = () => {
   const problems = diagnoseCellProblems(robot, machine, die, waypoints);
   const actionableProblems = problems.filter(p => p.issueType !== 'optimal');
   const isHealthy = actionableProblems.length === 0;
+
+  const [showEoatDetails, setShowEoatDetails] = useState<boolean>(true);
+  const [selectedEoatFilter, setSelectedEoatFilter] = useState<'ALL' | EoatType>('ALL');
+
+  const activeEoatPreset = SPRAY_HEAD_PRESETS.find(p => p.id === tool.sprayHeadType) || SPRAY_HEAD_PRESETS[0];
+  const activeEoatSpec = tool.eoatSpec || activeEoatPreset.eoatSpec || EOAT_PRESETS.find(e => e.id === activeEoatPreset.id);
+
+  const eoatEvaluation = useMemo(() => {
+    return evaluateEoatCompatibility(robot, activeEoatSpec || tool, machine, die);
+  }, [robot, activeEoatSpec, tool, machine, die]);
 
   return (
     <aside className="w-80 h-full bg-slate-900 border-r border-slate-800 flex flex-col z-10 shrink-0 text-slate-200 select-none overflow-y-auto divide-y divide-slate-800 scrollbar-thin">
@@ -501,49 +523,230 @@ export const ManufacturingPanel: React.FC = () => {
         </select>
       </div>
 
-      {/* 5. Step 4: Choose Spray Head (6 Tooling Types) */}
+      {/* 5. Step 4: Choose Spray Head (EOAT Tooling Archetypes) */}
       <div className={`p-3 transition ${workflowStep === 4 ? 'bg-blue-950/20' : ''}`}>
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
             <SprayIcon className="w-3.5 h-3.5 text-blue-400" />
-            <span>4. Spray Head Tooling</span>
+            <span>4. Spray Head EOAT Tooling</span>
           </label>
-          <span className="text-[10px] text-cyan-400 font-mono">
-            {tool.nozzleCount} Nozzles • {tool.manifoldWidthMm}mm Width
-          </span>
+          <div className="flex items-center gap-1">
+            <span className={`px-1.5 py-0.5 text-[9px] font-mono font-bold rounded border ${
+              eoatEvaluation.overallStatus === 'OPTIMAL'
+                ? 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60'
+                : eoatEvaluation.overallStatus === 'COMPATIBLE_WITH_CAUTION'
+                ? 'bg-amber-950/70 text-amber-300 border-amber-700/60'
+                : 'bg-rose-950/70 text-rose-300 border-rose-700/60'
+            }`}>
+              {eoatEvaluation.compatibilityScore}% {eoatEvaluation.overallStatus === 'OPTIMAL' ? 'Optimal' : eoatEvaluation.overallStatus === 'COMPATIBLE_WITH_CAUTION' ? 'Caution' : 'Incompatible'}
+            </span>
+          </div>
         </div>
 
         <p className="text-[10px] text-slate-400 mt-1">
-          Select spray head geometry engineered for HPDC daylight and parting lines.
+          Select end-of-arm tooling engineered for HPDC platen daylight, tie bar clearance, and cycle time.
         </p>
 
-        {/* 6 Spray Head Type Selector */}
-        <div className="mt-2 space-y-1.5">
-          {SPRAY_HEAD_PRESETS.map(preset => {
+        {/* Archetype Filter Tabs */}
+        <div className="flex items-center gap-1 mt-2.5 overflow-x-auto pb-1 scrollbar-none">
+          {(['ALL', 'MONOBLOCK', 'MODULAR', 'MATRIX', 'MICRO_DOSING'] as const).map(tab => {
+            const isTabActive = selectedEoatFilter === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSelectedEoatFilter(tab)}
+                className={`px-2 py-0.5 text-[9px] font-semibold rounded whitespace-nowrap transition cursor-pointer border ${
+                  isTabActive
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                }`}
+              >
+                {tab === 'ALL' ? 'All EOAT' : tab.replace('_', ' ')}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* EOAT Presets Selector */}
+        <div className="mt-2 space-y-1.5 max-h-56 overflow-y-auto pr-0.5 scrollbar-thin">
+          {SPRAY_HEAD_PRESETS.filter(preset => {
+            if (selectedEoatFilter === 'ALL') return true;
+            const pType = preset.eoatSpec?.type || (
+              preset.id === 'MONOBLOCK' ? 'MONOBLOCK' :
+              preset.id === 'MODULAR' || preset.id === 'modular_extension' ? 'MODULAR' :
+              preset.id === 'MATRIX' || preset.id === 'contour_frame' ? 'MATRIX' :
+              preset.id === 'MICRO_DOSING' || preset.id === 'micro_spray' ? 'MICRO_DOSING' : 'MONOBLOCK'
+            );
+            return pType === selectedEoatFilter;
+          }).map(preset => {
             const isSelected = tool.sprayHeadType === preset.id;
+            const pType = preset.eoatSpec?.type || (
+              preset.id === 'MONOBLOCK' ? 'MONOBLOCK' :
+              preset.id === 'MODULAR' || preset.id === 'modular_extension' ? 'MODULAR' :
+              preset.id === 'MATRIX' || preset.id === 'contour_frame' ? 'MATRIX' :
+              preset.id === 'MICRO_DOSING' || preset.id === 'micro_spray' ? 'MICRO_DOSING' : 'MONOBLOCK'
+            );
+
+            const badgeBg =
+              pType === 'MONOBLOCK' ? 'bg-cyan-950/60 text-cyan-300 border-cyan-800/60' :
+              pType === 'MODULAR' ? 'bg-amber-950/60 text-amber-300 border-amber-800/60' :
+              pType === 'MATRIX' ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/60' :
+              'bg-emerald-950/60 text-emerald-300 border-emerald-800/60';
+
             return (
               <button
                 key={preset.id}
                 id={`sprayhead-preset-${preset.id}`}
                 onClick={() => setSprayHeadPreset(preset.id)}
-                className={`w-full p-2 rounded-lg border text-left text-xs transition cursor-pointer flex flex-col gap-1 ${
+                className={`w-full p-2 rounded-lg border text-left text-xs transition cursor-pointer flex flex-col gap-1.5 ${
                   isSelected
                     ? 'bg-blue-600/20 border-blue-500 text-white shadow-sm ring-1 ring-blue-500/50'
                     : 'bg-slate-950/50 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-100">{preset.name}</span>
-                  <span className="text-[9px] font-mono text-slate-400">
-                    {preset.nozzleCount} Noz • {preset.weightKg}kg
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-100">{preset.name}</span>
+                    <span className={`px-1 py-0.2 text-[8px] font-mono uppercase font-bold rounded border ${badgeBg}`}>
+                      {pType}
+                    </span>
+                  </div>
+                  {preset.cycleTimeAdvantageSec ? (
+                    <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/50 px-1 py-0.2 rounded border border-emerald-800/40">
+                      -{preset.cycleTimeAdvantageSec}s cycle
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-mono text-slate-400">
+                      {preset.weightKg}kg
+                    </span>
+                  )}
                 </div>
+
+                <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                  <span>{preset.nozzleCount} Nozzles • {preset.eoatSpec?.dimensionsMm.width || preset.manifoldWidthMm}mm W</span>
+                  <span>{preset.costTier || 'Standard'} • {preset.maintenanceComplexity || 'Moderate'}</span>
+                </div>
+
                 <p className="text-[9.5px] text-slate-400 leading-tight">
                   {preset.description}
                 </p>
               </button>
             );
           })}
+        </div>
+
+        {/* Active EOAT Deep-Dive & Kinematic Compatibility Inspector */}
+        <div className="mt-2.5 p-2 bg-slate-950/70 border border-slate-800 rounded-lg">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+              <Activity className="w-3 h-3 text-cyan-400" />
+              <span>Cell Clearance & Payload Match</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowEoatDetails(!showEoatDetails)}
+              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-0.5 cursor-pointer"
+            >
+              <span>{showEoatDetails ? 'Hide Specs' : 'Show Specs'}</span>
+              {showEoatDetails ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+            </button>
+          </div>
+
+          {/* Quick Metrics Bars */}
+          <div className="space-y-1.5 text-[9px]">
+            {/* 1. Payload Utilization */}
+            <div>
+              <div className="flex justify-between text-slate-400 mb-0.5">
+                <span>Robot Payload Margin</span>
+                <span className="font-mono text-slate-200">
+                  {activeEoatSpec?.weightKg || tool.weightKg}kg / {robot.payloadKg}kg ({eoatEvaluation.payloadUtilizationPercent}%)
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    eoatEvaluation.payloadUtilizationPercent > 90
+                      ? 'bg-rose-500'
+                      : eoatEvaluation.payloadUtilizationPercent > 70
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${Math.min(100, eoatEvaluation.payloadUtilizationPercent)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2. Tie Bar Daylight Clearance */}
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+              <span className="text-slate-400">Tie Bar Daylight Margin:</span>
+              <span className={`font-mono font-bold ${eoatEvaluation.tieBarClearanceMarginMm > 40 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {eoatEvaluation.tieBarClearanceMarginMm > 0 ? '+' : ''}{Math.round(eoatEvaluation.tieBarClearanceMarginMm)} mm
+              </span>
+            </div>
+
+            {/* 3. Platen Open Stroke Margin */}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Platen Daylight Margin:</span>
+              <span className={`font-mono font-bold ${eoatEvaluation.dieDaylightClearanceMarginMm > 50 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {eoatEvaluation.dieDaylightClearanceMarginMm > 0 ? '+' : ''}{Math.round(eoatEvaluation.dieDaylightClearanceMarginMm)} mm
+              </span>
+            </div>
+          </div>
+
+          {/* Expanded Engineering Specs */}
+          {showEoatDetails && (
+            <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1.5 text-[9px] text-slate-300">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-900/60 p-1.5 rounded border border-slate-800/60 font-mono">
+                <div>
+                  <span className="text-slate-500 block text-[8px]">ENVELOPE (WxHxD)</span>
+                  <span>{activeEoatSpec?.dimensionsMm.width || tool.manifoldWidthMm}×{activeEoatSpec?.dimensionsMm.height || 140}×{activeEoatSpec?.dimensionsMm.depth || 90}mm</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[8px]">CLEARANCE RADIUS</span>
+                  <span>R{Math.round(activeEoatSpec?.dimensionsMm.clearanceRadius || (tool.manifoldWidthMm * 0.55))}mm</span>
+                </div>
+              </div>
+
+              {activeEoatPreset.fluidAirSupply && (
+                <div className="bg-slate-900/60 p-1.5 rounded border border-slate-800/60 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Lubricant Supply:</span>
+                    <span className="font-mono text-cyan-300">{activeEoatPreset.fluidAirSupply.lubricantPressureBar} bar</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Blow-Off Air:</span>
+                    <span className="font-mono text-slate-200">{activeEoatPreset.fluidAirSupply.airPressureBar} bar</span>
+                  </div>
+                  {activeEoatPreset.fluidAirSupply.antiDripSuckBack && (
+                    <div className="text-[8.5px] text-emerald-400 flex items-center gap-1 mt-0.5">
+                      <Check className="w-2.5 h-2.5" />
+                      <span>Zero-Drip Pneumatic Suck-Back Diaphragms</span>
+                    </div>
+                  )}
+                  {activeEoatPreset.fluidAirSupply.airKnifeIntegrated && (
+                    <div className="text-[8.5px] text-cyan-300 flex items-center gap-1">
+                      <Wind className="w-2.5 h-2.5" />
+                      <span>Integrated Slotted High-Velocity Air Knife</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeEoatPreset.nozzleAdjustabilityDetails && (
+                <p className="text-[9px] text-slate-400 leading-tight italic">
+                  ℹ {activeEoatPreset.nozzleAdjustabilityDetails}
+                </p>
+              )}
+
+              {eoatEvaluation.recommendations.length > 0 && (
+                <div className="p-1.5 rounded bg-blue-950/40 border border-blue-900/40 text-[8.5px] text-blue-200">
+                  <span className="font-bold block text-blue-300">Engineering Recommendation:</span>
+                  <span>{eoatEvaluation.recommendations[0]}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

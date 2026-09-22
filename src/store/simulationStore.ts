@@ -27,6 +27,7 @@ import {
   DEFAULT_WAYPOINTS,
   TOOL_DEFAULT,
   SPRAY_HEAD_PRESETS,
+  EOAT_PRESETS,
   DEFAULT_HOTSPOTS
 } from '../utils/presets';
 import { generateDieSurfaceCells } from '../utils/dieGeometry';
@@ -942,14 +943,39 @@ export function useSimulationStore(): SimulationStore {
   const setSprayHeadPreset = useCallback((presetId: SprayHeadType) => {
     const preset = SPRAY_HEAD_PRESETS.find(p => p.id === presetId);
     if (!preset) return;
+    const eoatSpec = preset.eoatSpec || EOAT_PRESETS.find(e => e.id === preset.id);
+    const resolvedEoatType = eoatSpec?.type || (
+      preset.id === 'MONOBLOCK' ? 'MONOBLOCK' :
+      preset.id === 'MODULAR' ? 'MODULAR' :
+      preset.id === 'MATRIX' ? 'MATRIX' :
+      preset.id === 'MICRO_DOSING' ? 'MICRO_DOSING' :
+      preset.id === 'modular_extension' ? 'MODULAR' :
+      preset.id === 'contour_frame' ? 'MATRIX' :
+      preset.id === 'micro_spray' ? 'MICRO_DOSING' : 'MONOBLOCK'
+    );
+
     storeState.tool = {
       ...storeState.tool,
       manifoldType: preset.manifoldType,
       sprayHeadType: preset.id,
-      manifoldWidthMm: preset.manifoldWidthMm,
-      nozzleCount: preset.nozzleCount,
-      weightKg: preset.weightKg,
-      nozzles: [...preset.nozzles],
+      eoatType: resolvedEoatType,
+      eoatSpec: eoatSpec,
+      manifoldWidthMm: eoatSpec?.dimensionsMm.width || preset.manifoldWidthMm,
+      nozzleCount: eoatSpec?.nozzleCount || preset.nozzleCount,
+      weightKg: eoatSpec?.weightKg || preset.weightKg,
+      dimensions: eoatSpec ? {
+        width: eoatSpec.dimensionsMm.width,
+        height: eoatSpec.dimensionsMm.height,
+        depth: eoatSpec.dimensionsMm.depth,
+        clearanceRadius: eoatSpec.dimensionsMm.clearanceRadius
+      } : {
+        width: preset.manifoldWidthMm,
+        height: 140,
+        depth: 90,
+        clearanceRadius: preset.manifoldWidthMm * 0.55
+      },
+      mountingInterface: eoatSpec?.mountingInterface,
+      nozzles: eoatSpec?.nozzles || [...preset.nozzles],
       microSpraySettings: preset.microSpraySettings ? { ...preset.microSpraySettings } : undefined,
       conventionalSettings: preset.conventionalSettings ? { ...preset.conventionalSettings } : undefined
     };

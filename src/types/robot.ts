@@ -82,7 +82,13 @@ export interface RobotModelSpec {
   mountOrientation: 'floor' | 'shelf' | 'top_machine_mount' | 'top' | 'side' | 'rear' | 'custom';
 }
 
+export type EoatType = 'MONOBLOCK' | 'MODULAR' | 'MATRIX' | 'MICRO_DOSING';
+
 export type SprayHeadType =
+  | 'MONOBLOCK'
+  | 'MODULAR'
+  | 'MATRIX'
+  | 'MICRO_DOSING'
   | 'dual_sided'
   | 'contour_frame'
   | 'modular_extension'
@@ -100,6 +106,60 @@ export interface SprayNozzleConfig {
   flowRatio: number; // 0.1 to 1.5
   sprayWidthMm: number;
   rotationDeg?: number; // visual tilt/rotation
+  isAdjustable?: boolean;
+  swivelAngleDeg?: number;
+}
+
+export interface EOATSpec {
+  id: string;
+  type: EoatType;
+  name: string;
+  subtitle: string;
+  category: string;
+  description: string;
+  weightKg: number;
+  dimensionsMm: {
+    width: number;
+    height: number;
+    depth: number;
+    clearanceRadius: number;
+  };
+  mountingInterface: string; // e.g. "ISO 9409-1-100-6-M8"
+  fluidMode: 'internal_cross_drilled' | 'modular_twin_fluid' | 'matrix_array' | 'mql_micro_pulse';
+  fluidModeLabel: string;
+  sprayPattern: 'flat_fan' | 'full_cone' | 'wide_matrix' | 'micro_aerosol_pulse';
+  sprayPatternLabel: string;
+  coverageWidthMm: number;
+  adjustability: 'fixed_drilled' | 'independently_adjustable' | 'fixed_grid' | 'precision_fixed';
+  adjustabilityLabel: string;
+  nozzleAdjustabilityDetails: string;
+  nozzleCount: number;
+  nozzleLayout: string;
+  nozzles: SprayNozzleConfig[];
+  operatingPressureBar: {
+    lubeMin: number;
+    lubeMax: number;
+    airMin: number;
+    airMax: number;
+  };
+  fluidAirSupply: {
+    lubePressure: string;
+    airPressure: string;
+    lubeFlowRate: string;
+    airConsumptionNlPerMin: number;
+    connectionInterfaces: string;
+  };
+  cycleTimeAdvantageSec: number;
+  cycleTimeNote: string;
+  costTier: 'STANDARD' | 'MID_RANGE' | 'PREMIUM' | 'HIGH_END';
+  costTierLabel: string;
+  maintenanceComplexity: 'LOW' | 'MEDIUM' | 'HIGH';
+  maintenanceNotes: string;
+  keyFeatures: string[];
+  recommendedDcmRangeTons: [number, number];
+  defaultSprayDistanceMm: number;
+  dropletSizeUm: number;
+  lubeSavingsPercent: number;
 }
 
 export interface ToolCenterPoint {
@@ -109,11 +169,20 @@ export interface ToolCenterPoint {
   rx: number; // tool orientation deg
   ry: number;
   rz: number;
-  manifoldType: 'single_nozzle' | 'dual_sided_matrix' | 'multi_head_linear' | 'micro_spray';
+  manifoldType: 'single_nozzle' | 'dual_sided_matrix' | 'multi_head_linear' | 'micro_spray' | 'monoblock' | 'modular_frame' | 'matrix_grid' | 'micro_dosing';
   sprayHeadType?: SprayHeadType;
+  eoatType?: EoatType;
+  eoatSpec?: EOATSpec;
   nozzleCount: number;
   manifoldWidthMm: number;
   weightKg: number;
+  dimensions?: {
+    width: number;
+    height: number;
+    depth: number;
+    clearanceRadius: number;
+  };
+  mountingInterface?: string;
   nozzles?: SprayNozzleConfig[];
   microSpraySettings?: {
     fineSpray: boolean;

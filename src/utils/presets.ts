@@ -1,5 +1,5 @@
 import { DieModel } from '../types/die';
-import { RobotModelSpec, ToolCenterPoint, SprayHeadType, SprayNozzleConfig, HotSpotDefinition } from '../types/robot';
+import { RobotModelSpec, ToolCenterPoint, SprayHeadType, SprayNozzleConfig, HotSpotDefinition, EoatType, EOATSpec } from '../types/robot';
 import { DieCastingMachine } from '../types/machine';
 import { Waypoint } from '../types/path';
 
@@ -424,12 +424,31 @@ export interface SprayHeadPreset {
   name: string;
   category: string;
   description: string;
-  manifoldType: 'single_nozzle' | 'dual_sided_matrix' | 'multi_head_linear' | 'micro_spray';
+  manifoldType: 'single_nozzle' | 'dual_sided_matrix' | 'multi_head_linear' | 'micro_spray' | 'monoblock' | 'modular_frame' | 'matrix_grid' | 'micro_dosing';
   manifoldWidthMm: number;
   nozzleCount: number;
   weightKg: number;
   defaultSprayDistanceMm: number;
   nozzles: SprayNozzleConfig[];
+  eoatSpec?: EOATSpec;
+  cycleTimeAdvantageSec?: number;
+  cycleTimeNote?: string;
+  costTier?: 'STANDARD' | 'MID_RANGE' | 'PREMIUM' | 'HIGH_END';
+  costTierLabel?: string;
+  maintenanceComplexity?: 'LOW' | 'MEDIUM' | 'HIGH';
+  maintenanceNotes?: string;
+  nozzleAdjustabilityDetails?: string;
+  fluidAirSupply?: {
+    lubePressure: string;
+    airPressure: string;
+    lubeFlowRate: string;
+    airConsumptionNlPerMin: number;
+    connectionInterfaces: string;
+    lubricantPressureBar?: number;
+    airPressureBar?: number;
+    antiDripSuckBack?: boolean;
+    airKnifeIntegrated?: boolean;
+  };
   microSpraySettings?: {
     fineSpray: boolean;
     sprayWidthMm: number;
@@ -442,7 +461,359 @@ export interface SprayHeadPreset {
   };
 }
 
+export const EOAT_PRESETS: EOATSpec[] = [
+  {
+    id: 'MONOBLOCK',
+    type: 'MONOBLOCK',
+    name: 'Monoblock High-Volume Manifold',
+    subtitle: 'Machined 6061-T6 Billet Block • Integrated Fluid Channels',
+    category: 'Dedicated High-Volume Tooling',
+    description: 'Compact machined aluminum/stainless manifold with integrated internal gun-drilled fluid channels, fixed precision nozzle positions, and minimal external fittings or hoses. Built for structural rigidity, zero hose-pinch risk, and continuous high-volume production.',
+    weightKg: 12.5,
+    dimensionsMm: {
+      width: 340,
+      height: 130,
+      depth: 85,
+      clearanceRadius: 190
+    },
+    mountingInterface: 'ISO 9409-1-100-6-M8 (Direct Rigid Flange)',
+    fluidMode: 'internal_cross_drilled',
+    fluidModeLabel: 'Internal Rifle-Drilled Gallery (No External Hoses)',
+    sprayPattern: 'flat_fan',
+    sprayPatternLabel: 'Opposed Precision Flat-Fan (Fixed & Moving Die)',
+    coverageWidthMm: 380,
+    adjustability: 'fixed_drilled',
+    adjustabilityLabel: 'Factory Fixed Bored Ports (Zero Creep Under Vibration)',
+    nozzleAdjustabilityDetails: 'Fixed machined ports at factory engineered coordinates. Zero mechanical creep, no loosening screws under aggressive robot accelerations.',
+    nozzleCount: 10,
+    nozzleLayout: 'Dual-Row Opposing Fixed (5 Fixed / 5 Moving, plus integrated air-knife slit)',
+    operatingPressureBar: {
+      lubeMin: 3.0,
+      lubeMax: 6.0,
+      airMin: 4.5,
+      airMax: 7.0
+    },
+    fluidAirSupply: {
+      lubePressure: '3.0 - 6.0 bar (Medium Pressure Diluted Release Agent)',
+      airPressure: '4.5 - 7.0 bar (Dry Shop Air for Atomization & Air Blow)',
+      lubeFlowRate: '35 - 75 mL/sec total manifold flow',
+      airConsumptionNlPerMin: 1450,
+      connectionInterfaces: '1x G 3/8" Lube In, 1x G 1/2" Atomizing Air, 1x G 1/2" Main Blast Air'
+    },
+    cycleTimeAdvantageSec: 2.8,
+    cycleTimeNote: '2.5 - 3.2s faster per cycle due to simultaneous dual-face spraying and higher wrist acceleration with rigid monoblock.',
+    costTier: 'PREMIUM',
+    costTierLabel: '$$$ Premium Machined Billet',
+    maintenanceComplexity: 'LOW',
+    maintenanceNotes: 'Ultra-low maintenance: No external hose bundles to tear or leak. Flush manifold channel monthly with descaler.',
+    keyFeatures: [
+      'Monolithic CNC 6061-T6 billet aluminum construction',
+      'Gun-drilled internal fluid galleries eliminate external hose-pinch risks',
+      'Dual opposing spray faces for simultaneous cover/ejector die coverage',
+      'Integrated high-velocity air-knife slit for rapid parting line drying',
+      'Rigid ISO 9409-1 direct mounting flange with zero dynamic deflection'
+    ],
+    recommendedDcmRangeTons: [350, 1350],
+    defaultSprayDistanceMm: 130,
+    dropletSizeUm: 45,
+    lubeSavingsPercent: 15,
+    nozzles: [
+      { id: 'mb-f1', name: 'Fixed Side Top Left', offsetMm: [-110, 40, 35], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-f2', name: 'Fixed Side Top Right', offsetMm: [110, 40, 35], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-f3', name: 'Fixed Side Center Hub', offsetMm: [0, 0, 35], directionVector: [0, 0, -1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 200 },
+      { id: 'mb-f4', name: 'Fixed Side Bottom Left', offsetMm: [-110, -40, 35], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-f5', name: 'Fixed Side Bottom Right', offsetMm: [110, -40, 35], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-m1', name: 'Moving Side Top Left', offsetMm: [-110, 40, -35], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-m2', name: 'Moving Side Top Right', offsetMm: [110, 40, -35], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-m3', name: 'Moving Side Center Hub', offsetMm: [0, 0, -35], directionVector: [0, 0, 1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 200 },
+      { id: 'mb-m4', name: 'Moving Side Bottom Left', offsetMm: [-110, -40, -35], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+      { id: 'mb-m5', name: 'Moving Side Bottom Right', offsetMm: [110, -40, -35], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 }
+    ]
+  },
+  {
+    id: 'MODULAR',
+    type: 'MODULAR',
+    name: 'Modular Rail Framework EOAT',
+    subtitle: 'Extruded T-Slot Rails • Articulated Extension Wands',
+    category: 'Flexible Job-Shop Tooling',
+    description: 'Rail/framework manifold with independently adjustable nozzle blocks, rigid extension tubes, multi-axis swivel joints, mounting brackets, and visible polyurethane hoses with push-in fittings. Fully reconfigurable for rapid die changeovers and custom cavity geometry.',
+    weightKg: 19.8,
+    dimensionsMm: {
+      width: 480,
+      height: 240,
+      depth: 150,
+      clearanceRadius: 280
+    },
+    mountingInterface: 'ISO 9409-1-100-6-M8 with Quick-Clamp Stem',
+    fluidMode: 'modular_twin_fluid',
+    fluidModeLabel: 'External Multi-Circuit Tubing with Quick-Fit Swivels',
+    sprayPattern: 'full_cone',
+    sprayPatternLabel: 'Independently Articulated Targeted Cones & Deep Lances',
+    coverageWidthMm: 520,
+    adjustability: 'independently_adjustable',
+    adjustabilityLabel: '3-Axis Slide & Swivel Joints (User Configurable)',
+    nozzleAdjustabilityDetails: 'Independently sliding rail clamp blocks (X-axis ±200mm, Y-axis ±80mm) with ±35° ball-swivel knuckles for custom cavity contours.',
+    nozzleCount: 14,
+    nozzleLayout: 'Articulated T-Slot Clustered Array (7 Fixed / 7 Moving including deep-lance extensions)',
+    operatingPressureBar: {
+      lubeMin: 2.5,
+      lubeMax: 5.5,
+      airMin: 4.0,
+      airMax: 6.5
+    },
+    fluidAirSupply: {
+      lubePressure: '2.5 - 5.5 bar (Adjustable Fluid Regulator)',
+      airPressure: '4.0 - 6.5 bar (Main Blast & Swivel Assist Air)',
+      lubeFlowRate: '45 - 90 mL/sec total manifold flow',
+      airConsumptionNlPerMin: 1900,
+      connectionInterfaces: 'Central distribution block with 8mm OD polyurethane push-in pneumatic/fluid lines'
+    },
+    cycleTimeAdvantageSec: 1.2,
+    cycleTimeNote: 'Enables complex multi-cavity reach without extra robot re-orientations; ~1.2s savings on deep die designs.',
+    costTier: 'MID_RANGE',
+    costTierLabel: '$$ Cost-Effective Modular Framework',
+    maintenanceComplexity: 'MEDIUM',
+    maintenanceNotes: 'Inspect swivel joints and hose fittings weekly for seal integrity or flex fatigue. Replace push-in O-rings semi-annually.',
+    keyFeatures: [
+      'Dual 40x40 structural extruded aluminum profile rails',
+      'Independently sliding clamp carriages with brass lock screws',
+      'Articulating stainless extension wands for deep cavity core reach',
+      'Ball-swivel nozzle heads with ±35° multi-axis directional tilt',
+      'Color-coded polyurethane twin-fluid hoses with push-in fittings'
+    ],
+    recommendedDcmRangeTons: [500, 2000],
+    defaultSprayDistanceMm: 150,
+    dropletSizeUm: 55,
+    lubeSavingsPercent: 20,
+    nozzles: [
+      { id: 'mod-1', name: 'Lance Left Top (Fixed)', offsetMm: [-160, 80, 50], directionVector: [0.1, 0, -1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true, swivelAngleDeg: 15 },
+      { id: 'mod-2', name: 'Lance Center Top (Fixed)', offsetMm: [0, 80, 50], directionVector: [0, 0, -1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.0, sprayWidthMm: 160, isAdjustable: true },
+      { id: 'mod-3', name: 'Lance Right Top (Fixed)', offsetMm: [160, 80, 50], directionVector: [-0.1, 0, -1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true, swivelAngleDeg: -15 },
+      { id: 'mod-4', name: 'Core Blast Left (Fixed)', offsetMm: [-100, 0, 70], directionVector: [0, 0, -1], sprayAngleDeg: 50, type: 'lube', flowRatio: 1.3, sprayWidthMm: 140, isAdjustable: true },
+      { id: 'mod-5', name: 'Core Blast Right (Fixed)', offsetMm: [100, 0, 70], directionVector: [0, 0, -1], sprayAngleDeg: 50, type: 'lube', flowRatio: 1.3, sprayWidthMm: 140, isAdjustable: true },
+      { id: 'mod-6', name: 'Slide Air Jet (Fixed)', offsetMm: [0, -70, 40], directionVector: [0, 0.2, -1], sprayAngleDeg: 75, type: 'air', flowRatio: 1.0, sprayWidthMm: 220, isAdjustable: true },
+      { id: 'mod-7', name: 'Bottom Chiller (Fixed)', offsetMm: [-140, -80, 40], directionVector: [0.1, 0.2, -1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true },
+      { id: 'mod-8', name: 'Lance Left Top (Moving)', offsetMm: [-160, 80, -50], directionVector: [0.1, 0, 1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true, swivelAngleDeg: 15 },
+      { id: 'mod-9', name: 'Lance Center Top (Moving)', offsetMm: [0, 80, -50], directionVector: [0, 0, 1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.0, sprayWidthMm: 160, isAdjustable: true },
+      { id: 'mod-10', name: 'Lance Right Top (Moving)', offsetMm: [160, 80, -50], directionVector: [-0.1, 0, 1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true, swivelAngleDeg: -15 },
+      { id: 'mod-11', name: 'Core Blast Left (Moving)', offsetMm: [-100, 0, -70], directionVector: [0, 0, 1], sprayAngleDeg: 50, type: 'lube', flowRatio: 1.3, sprayWidthMm: 140, isAdjustable: true },
+      { id: 'mod-12', name: 'Core Blast Right (Moving)', offsetMm: [100, 0, -70], directionVector: [0, 0, 1], sprayAngleDeg: 50, type: 'lube', flowRatio: 1.3, sprayWidthMm: 140, isAdjustable: true },
+      { id: 'mod-13', name: 'Slide Air Jet (Moving)', offsetMm: [0, -70, -40], directionVector: [0, 0.2, 1], sprayAngleDeg: 75, type: 'air', flowRatio: 1.0, sprayWidthMm: 220, isAdjustable: true },
+      { id: 'mod-14', name: 'Bottom Chiller (Moving)', offsetMm: [140, -80, -40], directionVector: [-0.1, 0.2, 1], sprayAngleDeg: 60, type: 'combined', flowRatio: 1.1, sprayWidthMm: 160, isAdjustable: true }
+    ]
+  },
+  {
+    id: 'MATRIX',
+    type: 'MATRIX',
+    name: 'Matrix Planar Grid Array EOAT',
+    subtitle: 'Large Uniform Nozzle Grid • Structural & Giga-Castings',
+    category: 'Large-Die & Structural Casting Tooling',
+    description: 'Large flat grid/array of standardized twin-fluid nozzles engineered for broad die surfaces, automotive shock towers, subframes, and structural giga-castings. Provides instant wide-area coverage with dense uniform nozzle layout and heavy-duty fluid supply trunks.',
+    weightKg: 28.5,
+    dimensionsMm: {
+      width: 640,
+      height: 420,
+      depth: 110,
+      clearanceRadius: 380
+    },
+    mountingInterface: 'ISO 9409-1-125-6-M10 (Heavy-Duty Industrial Flange)',
+    fluidMode: 'matrix_array',
+    fluidModeLabel: 'High-Volume Dual Plenum Distribution Trunk',
+    sprayPattern: 'wide_matrix',
+    sprayPatternLabel: 'High-Density Uniform Planar Matrix Array',
+    coverageWidthMm: 720,
+    adjustability: 'fixed_grid',
+    adjustabilityLabel: 'Factory Calibrated High-Density Grid (Multi-Zone Valving)',
+    nozzleAdjustabilityDetails: 'Uniform high-density fixed matrix with multi-zone pneumatic shutoff bank (Zone A/B/C selectable in robot program).',
+    nozzleCount: 24,
+    nozzleLayout: 'Uniform 6x4 Planar Grid Array (12 Fixed Die / 12 Moving Die Nozzles, 24 total)',
+    operatingPressureBar: {
+      lubeMin: 3.5,
+      lubeMax: 7.0,
+      airMin: 5.0,
+      airMax: 8.0
+    },
+    fluidAirSupply: {
+      lubePressure: '3.5 - 7.0 bar (High Flow Dual Header Distribution)',
+      airPressure: '5.0 - 8.0 bar (Dedicated High-Volume Air Reservoir Required)',
+      lubeFlowRate: '80 - 180 mL/sec total matrix flow',
+      airConsumptionNlPerMin: 3800,
+      connectionInterfaces: 'Dual G 3/4" high-flow braided stainless umbilicals with quick-disconnect coupling'
+    },
+    cycleTimeAdvantageSec: 5.4,
+    cycleTimeNote: 'Up to 5.5s cycle time reduction on large structural dies. Covers entire die envelope in 1-2 rapid sweeps instead of raster passes.',
+    costTier: 'HIGH_END',
+    costTierLabel: '$$$$ High-End Large Envelope Tooling',
+    maintenanceComplexity: 'MEDIUM',
+    maintenanceNotes: 'Daily ultrasonic nozzle check. Requires high-capacity plant air compressor reservoir (≥4 m³/min).',
+    keyFeatures: [
+      'Full 6x4 standardized twin-fluid nozzle array (12 fixed / 12 moving)',
+      'Instantaneous broad-envelope coverage reduces robot dwell time by 45%',
+      'Ribbed structural perimeter frame with high torsional stiffness',
+      'Dual-circuit high-flow supply headers with pressure transducers',
+      'Ideal for battery trays, shock towers, longitudinal rails, and giga-press dies'
+    ],
+    recommendedDcmRangeTons: [800, 3500],
+    defaultSprayDistanceMm: 160,
+    dropletSizeUm: 50,
+    lubeSavingsPercent: 25,
+    nozzles: [
+      // 12 Fixed Face Nozzles (3 rows x 4 cols)
+      { id: 'mat-f1', name: 'Fixed Row 1 Col 1', offsetMm: [-220, 130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f2', name: 'Fixed Row 1 Col 2', offsetMm: [-75, 130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f3', name: 'Fixed Row 1 Col 3', offsetMm: [75, 130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f4', name: 'Fixed Row 1 Col 4', offsetMm: [220, 130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f5', name: 'Fixed Row 2 Col 1', offsetMm: [-220, 0, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f6', name: 'Fixed Row 2 Col 2', offsetMm: [-75, 0, 40], directionVector: [0, 0, -1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 180 },
+      { id: 'mat-f7', name: 'Fixed Row 2 Col 3', offsetMm: [75, 0, 40], directionVector: [0, 0, -1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 180 },
+      { id: 'mat-f8', name: 'Fixed Row 2 Col 4', offsetMm: [220, 0, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f9', name: 'Fixed Row 3 Col 1', offsetMm: [-220, -130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f10', name: 'Fixed Row 3 Col 2', offsetMm: [-75, -130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f11', name: 'Fixed Row 3 Col 3', offsetMm: [75, -130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-f12', name: 'Fixed Row 3 Col 4', offsetMm: [220, -130, 40], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      // 12 Moving Face Nozzles (3 rows x 4 cols)
+      { id: 'mat-m1', name: 'Moving Row 1 Col 1', offsetMm: [-220, 130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m2', name: 'Moving Row 1 Col 2', offsetMm: [-75, 130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m3', name: 'Moving Row 1 Col 3', offsetMm: [75, 130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m4', name: 'Moving Row 1 Col 4', offsetMm: [220, 130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m5', name: 'Moving Row 2 Col 1', offsetMm: [-220, 0, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m6', name: 'Moving Row 2 Col 2', offsetMm: [-75, 0, -40], directionVector: [0, 0, 1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 180 },
+      { id: 'mat-m7', name: 'Moving Row 2 Col 3', offsetMm: [75, 0, -40], directionVector: [0, 0, 1], sprayAngleDeg: 70, type: 'lube', flowRatio: 1.2, sprayWidthMm: 180 },
+      { id: 'mat-m8', name: 'Moving Row 2 Col 4', offsetMm: [220, 0, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m9', name: 'Moving Row 3 Col 1', offsetMm: [-220, -130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m10', name: 'Moving Row 3 Col 2', offsetMm: [-75, -130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m11', name: 'Moving Row 3 Col 3', offsetMm: [75, -130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 },
+      { id: 'mat-m12', name: 'Moving Row 3 Col 4', offsetMm: [220, -130, -40], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 170 }
+    ]
+  },
+  {
+    id: 'MICRO_DOSING',
+    type: 'MICRO_DOSING',
+    name: 'Micro-Dosing / MQL Precision EOAT',
+    subtitle: 'Zero-Drip High-Speed Pulse Micro-Valves • Concentrate Spray',
+    category: 'Minimum Quantity Lubrication (MQL)',
+    description: 'Compact precision manifold with specialized high-speed pulse micro-valves for minimal lubricant consumption, zero-drip suck-back anti-clog technology, and high-frequency pulse spraying. Delivers ultra-fine aerosol mist (15-30 µm) with up to 90% water and lubricant savings.',
+    weightKg: 7.2,
+    dimensionsMm: {
+      width: 260,
+      height: 110,
+      depth: 75,
+      clearanceRadius: 150
+    },
+    mountingInterface: 'ISO 9409-1-63-4-M6 / ISO 9409-1-100-6-M8 (Ultra-Light Flange)',
+    fluidMode: 'mql_micro_pulse',
+    fluidModeLabel: 'High-Frequency Pulse Micro-Dosing (Pure Concentrate)',
+    sprayPattern: 'micro_aerosol_pulse',
+    sprayPatternLabel: 'Aerosol Micro-Droplet Mist (15-30 µm, Zero Overspray)',
+    coverageWidthMm: 280,
+    adjustability: 'precision_fixed',
+    adjustabilityLabel: 'Micrometer Flow Metering per Valve (Zero Droplet Runoff)',
+    nozzleAdjustabilityDetails: 'Precision micrometer needle valve stroke adjustments (0.01 - 0.25 mL per pulse) with individual electronic PWM control.',
+    nozzleCount: 8,
+    nozzleLayout: 'High-Precision Linear Micro-Injectors (4 Fixed / 4 Moving with suck-back valves)',
+    operatingPressureBar: {
+      lubeMin: 6.0,
+      lubeMax: 15.0,
+      airMin: 4.0,
+      airMax: 6.5
+    },
+    fluidAirSupply: {
+      lubePressure: '6.0 - 15.0 bar (Pure Concentrate Release Agent / MQL)',
+      airPressure: '4.0 - 6.5 bar (Precision Low-Flow Micro-Atomization)',
+      lubeFlowRate: '4 - 18 mL/sec (Sub-milliliter pulsed dosing)',
+      airConsumptionNlPerMin: 620,
+      connectionInterfaces: 'Micro-bore 4mm stainless steel fluid tubing and 24V DC M12 electrical solenoid bus'
+    },
+    cycleTimeAdvantageSec: 3.6,
+    cycleTimeNote: 'Saves 3.5 - 4.2s per cycle because dry time is near zero (no water puddle evaporation needed). Parting line remains dry.',
+    costTier: 'HIGH_END',
+    costTierLabel: '$$$$ Precision MQL Technology',
+    maintenanceComplexity: 'HIGH',
+    maintenanceNotes: 'Micro-filtration (≤10 micron) strictly required. Monthly solenoid seal inspection. Zero effluent disposal cost.',
+    keyFeatures: [
+      'Piezoelectric/high-speed solenoid micro-pulse valves (up to 50 Hz)',
+      'Active suck-back anti-drip chamber eliminates parting-line drips',
+      'Ultra-light 7.2kg payload maximizes robot wrist acceleration and reach',
+      'Reduces fluid consumption by 85-90% with zero wastewater effluent',
+      'Fine sub-30 µm atomization eliminates die thermal fatigue and crazing'
+    ],
+    recommendedDcmRangeTons: [250, 1600],
+    defaultSprayDistanceMm: 110,
+    dropletSizeUm: 22,
+    lubeSavingsPercent: 88,
+    nozzles: [
+      { id: 'mql-f1', name: 'Micro Injector F1 (Left)', offsetMm: [-80, 25, 25], directionVector: [0, 0, -1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-f2', name: 'Micro Injector F2 (Center-Left)', offsetMm: [-25, 25, 25], directionVector: [0, 0, -1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-f3', name: 'Micro Injector F3 (Center-Right)', offsetMm: [25, 25, 25], directionVector: [0, 0, -1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-f4', name: 'Micro Injector F4 (Right)', offsetMm: [80, 25, 25], directionVector: [0, 0, -1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-m1', name: 'Micro Injector M1 (Left)', offsetMm: [-80, -25, -25], directionVector: [0, 0, 1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-m2', name: 'Micro Injector M2 (Center-Left)', offsetMm: [-25, -25, -25], directionVector: [0, 0, 1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-m3', name: 'Micro Injector M3 (Center-Right)', offsetMm: [25, -25, -25], directionVector: [0, 0, 1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 },
+      { id: 'mql-m4', name: 'Micro Injector M4 (Right)', offsetMm: [80, -25, -25], directionVector: [0, 0, 1], sprayAngleDeg: 45, type: 'lube', flowRatio: 0.8, sprayWidthMm: 110 }
+    ]
+  }
+];
+
 export const SPRAY_HEAD_PRESETS: SprayHeadPreset[] = [
+  // Primary 4 Realistic EOAT Tooling Options
+  {
+    id: 'MONOBLOCK',
+    name: EOAT_PRESETS[0].name,
+    category: EOAT_PRESETS[0].category,
+    description: EOAT_PRESETS[0].description,
+    manifoldType: 'monoblock',
+    manifoldWidthMm: EOAT_PRESETS[0].dimensionsMm.width,
+    nozzleCount: EOAT_PRESETS[0].nozzleCount,
+    weightKg: EOAT_PRESETS[0].weightKg,
+    defaultSprayDistanceMm: EOAT_PRESETS[0].defaultSprayDistanceMm,
+    nozzles: EOAT_PRESETS[0].nozzles,
+    eoatSpec: EOAT_PRESETS[0]
+  },
+  {
+    id: 'MODULAR',
+    name: EOAT_PRESETS[1].name,
+    category: EOAT_PRESETS[1].category,
+    description: EOAT_PRESETS[1].description,
+    manifoldType: 'modular_frame',
+    manifoldWidthMm: EOAT_PRESETS[1].dimensionsMm.width,
+    nozzleCount: EOAT_PRESETS[1].nozzleCount,
+    weightKg: EOAT_PRESETS[1].weightKg,
+    defaultSprayDistanceMm: EOAT_PRESETS[1].defaultSprayDistanceMm,
+    nozzles: EOAT_PRESETS[1].nozzles,
+    eoatSpec: EOAT_PRESETS[1]
+  },
+  {
+    id: 'MATRIX',
+    name: EOAT_PRESETS[2].name,
+    category: EOAT_PRESETS[2].category,
+    description: EOAT_PRESETS[2].description,
+    manifoldType: 'matrix_grid',
+    manifoldWidthMm: EOAT_PRESETS[2].dimensionsMm.width,
+    nozzleCount: EOAT_PRESETS[2].nozzleCount,
+    weightKg: EOAT_PRESETS[2].weightKg,
+    defaultSprayDistanceMm: EOAT_PRESETS[2].defaultSprayDistanceMm,
+    nozzles: EOAT_PRESETS[2].nozzles,
+    eoatSpec: EOAT_PRESETS[2]
+  },
+  {
+    id: 'MICRO_DOSING',
+    name: EOAT_PRESETS[3].name,
+    category: EOAT_PRESETS[3].category,
+    description: EOAT_PRESETS[3].description,
+    manifoldType: 'micro_dosing',
+    manifoldWidthMm: EOAT_PRESETS[3].dimensionsMm.width,
+    nozzleCount: EOAT_PRESETS[3].nozzleCount,
+    weightKg: EOAT_PRESETS[3].weightKg,
+    defaultSprayDistanceMm: EOAT_PRESETS[3].defaultSprayDistanceMm,
+    nozzles: EOAT_PRESETS[3].nozzles,
+    eoatSpec: EOAT_PRESETS[3],
+    microSpraySettings: {
+      fineSpray: true,
+      sprayWidthMm: 110,
+      applicationRateMlPerSec: 15
+    }
+  },
+  // Legacy / Alternate Presets
   {
     id: 'dual_sided',
     name: 'Dual-Sided / Multi-Directional Head',
@@ -623,12 +994,21 @@ export const TOOL_DEFAULT: ToolCenterPoint = {
   rx: 0,
   ry: 0,
   rz: 0,
-  manifoldType: 'dual_sided_matrix',
-  sprayHeadType: 'dual_sided',
-  nozzleCount: 8,
-  manifoldWidthMm: 280,
-  weightKg: 14.5,
-  nozzles: SPRAY_HEAD_PRESETS[0].nozzles
+  manifoldType: 'monoblock',
+  sprayHeadType: 'MONOBLOCK',
+  eoatType: 'MONOBLOCK',
+  eoatSpec: EOAT_PRESETS[0],
+  nozzleCount: EOAT_PRESETS[0].nozzleCount,
+  manifoldWidthMm: EOAT_PRESETS[0].dimensionsMm.width,
+  weightKg: EOAT_PRESETS[0].weightKg,
+  dimensions: {
+    width: EOAT_PRESETS[0].dimensionsMm.width,
+    height: EOAT_PRESETS[0].dimensionsMm.height,
+    depth: EOAT_PRESETS[0].dimensionsMm.depth,
+    clearanceRadius: EOAT_PRESETS[0].dimensionsMm.clearanceRadius
+  },
+  mountingInterface: EOAT_PRESETS[0].mountingInterface,
+  nozzles: EOAT_PRESETS[0].nozzles
 };
 
 export const DIE_PRESETS: DieModel[] = [

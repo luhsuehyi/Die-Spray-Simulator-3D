@@ -1,5 +1,5 @@
 import { Waypoint } from '../types/path';
-import { RobotModelSpec, RobotMountConfig } from '../types/robot';
+import { RobotModelSpec, RobotMountConfig, ToolCenterPoint } from '../types/robot';
 import { DieCastingMachine } from '../types/machine';
 import { DieModel } from '../types/die';
 import { CollisionAuditResult } from '../types/spray';
@@ -11,11 +11,17 @@ export function runCollisionAudit(
   robotSpec: RobotModelSpec,
   machine: DieCastingMachine,
   die: DieModel,
-  mountConfig?: RobotMountConfig
+  mountConfig?: RobotMountConfig,
+  tool?: ToolCenterPoint
 ): CollisionAuditResult {
   const collisionPairs: CollisionAuditResult['collisionPairs'] = [];
   let minClearance = 9999;
   let hasCollision = false;
+
+  const toolClearanceRadius = tool?.dimensions?.clearanceRadius ||
+    (tool?.eoatSpec?.dimensionsMm?.clearanceRadius) ||
+    (tool?.manifoldWidthMm ? Math.max(85, tool.manifoldWidthMm / 2) : 95);
+  const toolName = tool?.eoatSpec?.name || tool?.sprayHeadType ? `${tool?.sprayHeadType} Tooling` : 'Spray Manifold Tooling';
 
   // Machine tie bar positions in XY plane (centered at origin)
   // tieBarClearanceH and tieBarClearanceV define the inner clearance (daylight) between columns.
@@ -42,7 +48,7 @@ export function runCollisionAudit(
     const elbow = fk.jointPositions.elbow;
 
     const criticalPoints: { name: string; pos: [number, number, number]; radius: number }[] = [
-      { name: 'Spray Manifold Tooling', pos: tcp, radius: 95 },
+      { name: toolName, pos: tcp, radius: toolClearanceRadius },
       { name: 'Robot Wrist Axis', pos: wrist, radius: 110 },
       { name: 'Robot Elbow Joint', pos: elbow, radius: 140 }
     ];

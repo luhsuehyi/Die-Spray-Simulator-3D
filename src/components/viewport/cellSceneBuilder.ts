@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DieCastingMachine } from '../../types/machine';
 import { DieModel } from '../../types/die';
-import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig } from '../../types/robot';
+import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig, EoatType } from '../../types/robot';
 import { buildRobotKinematicModel } from '../../utils/kinematics/robotModelBuilder';
 import { Matrix4Tuple } from '../../types/kinematics';
 import { loadGp50CadParts, attachGp50CadParts } from '../../utils/gp50CadLoader';
@@ -1267,71 +1267,376 @@ export function createRobotArmRig(
   flangeGroup.add(toolStemMesh);
 
   // --- Tool TCP Manifold Meshes (Rigidly parented to tcpGroup) ---
-  const mWidth = tool.manifoldWidthMm || 360;
-  const headType = tool.sprayHeadType || 'dual_sided';
+  const mWidth = tool.dimensions?.width || tool.manifoldWidthMm || 360;
+  const mHeight = tool.dimensions?.height || 140;
+  const mDepth = tool.dimensions?.depth || 90;
 
-  if (headType === 'dual_sided') {
-    // Dual-Sided Opposing Manifold
-    const manifoldHub = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth, 60, 50)), MAT.toolBlue);
-    manifoldHub.castShadow = true;
-    tcpGroup.add(manifoldHub);
+  // Resolve EOAT tooling archetype
+  let activeEoatType: EoatType = 'MONOBLOCK';
+  if (tool.eoatType) {
+    activeEoatType = tool.eoatType;
+  } else if (tool.eoatSpec?.type) {
+    activeEoatType = tool.eoatSpec.type;
+  } else if (tool.sprayHeadType === 'MODULAR' || tool.sprayHeadType === 'modular_extension' || tool.manifoldType === 'modular_frame') {
+    activeEoatType = 'MODULAR';
+  } else if (tool.sprayHeadType === 'MATRIX' || tool.sprayHeadType === 'contour_frame' || tool.manifoldType === 'matrix_grid' || tool.manifoldType === 'dual_sided_matrix') {
+    activeEoatType = 'MATRIX';
+  } else if (tool.sprayHeadType === 'MICRO_DOSING' || tool.sprayHeadType === 'micro_spray' || tool.manifoldType === 'micro_dosing') {
+    activeEoatType = 'MICRO_DOSING';
+  } else {
+    activeEoatType = 'MONOBLOCK';
+  }
 
-    // Fixed die spray face nozzles (local -Z)
-    const fixedFace = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.88, 16, 14)), MAT.brass);
-    fixedFace.position.set(0, 0, -32);
-    tcpGroup.add(fixedFace);
+  if (activeEoatType === 'MONOBLOCK') {
+    // =========================================================================
+    // 1. MONOBLOCK EOAT: CNC Machined Billet 6061-T6 Manifold, Internal Galleries
+    // =========================================================================
+    // Main monolithic machined billet block
+    const blockH = Math.min(130, mHeight * 0.85);
+    const blockD = Math.min(85, mDepth * 0.85);
+    const billetGeo = trackGeo(new THREE.BoxGeometry(mWidth, blockH, blockD));
+    const billetMesh = new THREE.Mesh(billetGeo, MAT.aluminumPart);
+    billetMesh.castShadow = true;
+    tcpGroup.add(billetMesh);
 
-    // Moving die spray face nozzles (local +Z)
-    const movFace = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.88, 16, 14)), MAT.brass);
-    movFace.position.set(0, 0, 32);
-    tcpGroup.add(movFace);
-
-    // Supply fittings
-    [-1, 1].forEach(side => {
-      const fitting = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(12, 12, 28, 12)), MAT.platenSteel);
-      fitting.position.set(side * mWidth * 0.28, 38, 0);
-      tcpGroup.add(fitting);
+    // Beveled machined chamfer edges (top and bottom)
+    [-1, 1].forEach(sideY => {
+      const chamfer = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.98, 10, blockD * 0.7)), MAT.platenSteel);
+      chamfer.position.set(0, sideY * (blockH / 2 + 3), 0);
+      tcpGroup.add(chamfer);
     });
-  } else if (headType === 'contour_frame') {
-    // Picture-Frame Rectangular Manifold
-    const fTop = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth, 26, 32)), MAT.toolBlue);
-    fTop.position.set(0, 75, 0);
-    tcpGroup.add(fTop);
 
-    const fBot = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth, 26, 32)), MAT.toolBlue);
-    fBot.position.set(0, -75, 0);
-    tcpGroup.add(fBot);
+    // Circular gun-drilled internal channel inspection port hex plugs on lateral sides
+    [-1, 1].forEach(sideX => {
+      [-25, 0, 25].forEach(offsetY => {
+        const plug = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7, 7, 5, 6)), MAT.jointDark);
+        plug.rotation.z = Math.PI / 2;
+        plug.position.set(sideX * (mWidth / 2 + 2), offsetY, 0);
+        tcpGroup.add(plug);
+      });
+    });
 
-    const fLegL = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(26, 170, 32)), MAT.toolBlue);
-    fLegL.position.set(-mWidth / 2 + 13, 0, 0);
-    tcpGroup.add(fLegL);
+    // Back ISO 9409-1 direct mounting flange hub with socket head bolt pattern
+    const isoCollar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(55, 60, 24, 16)), MAT.platenSteel);
+    isoCollar.rotation.x = Math.PI / 2;
+    isoCollar.position.set(0, 0, blockD / 2 + 10);
+    tcpGroup.add(isoCollar);
 
-    const fLegR = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(26, 170, 32)), MAT.toolBlue);
-    fLegR.position.set(mWidth / 2 - 13, 0, 0);
-    tcpGroup.add(fLegR);
-  } else if (headType === 'modular_extension') {
-    // Extended deep cavity lances
-    const mBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(45, 50, 35, 16)), MAT.jointDark);
-    tcpGroup.add(mBase);
+    for (let b = 0; b < 6; b++) {
+      const angle = (b / 6) * Math.PI * 2;
+      const bolt = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(3.5, 3.5, 6, 6)), MAT.jointDark);
+      bolt.rotation.x = Math.PI / 2;
+      bolt.position.set(Math.cos(angle) * 42, Math.sin(angle) * 42, blockD / 2 + 22);
+      tcpGroup.add(bolt);
+    }
 
-    [-65, 65].forEach(lx => {
-      const lance = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(8, 8, 240, 16)), MAT.platenSteel);
+    // Fixed Die Spray Face (-Z) & Moving Die Spray Face (+Z)
+    [-1, 1].forEach(dirZ => {
+      // Recessed machined pocket strip
+      const pocket = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.88, blockH * 0.55, 6)), MAT.jointDark);
+      pocket.position.set(0, 0, dirZ * (blockD / 2 + 2));
+      tcpGroup.add(pocket);
+
+      // 5 Machined brass nozzles with hex collars and conical tips
+      const nozzleXs = [-mWidth * 0.35, -mWidth * 0.175, 0, mWidth * 0.175, mWidth * 0.35];
+      nozzleXs.forEach(nx => {
+        const hexBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7, 7, 10, 6)), MAT.brass);
+        hexBase.rotation.x = Math.PI / 2;
+        hexBase.position.set(nx, 0, dirZ * (blockD / 2 + 8));
+        tcpGroup.add(hexBase);
+
+        const tip = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(3.5, 6.5, 12, 12)), MAT.brass);
+        tip.rotation.x = dirZ < 0 ? -Math.PI / 2 : Math.PI / 2;
+        tip.position.set(nx, 0, dirZ * (blockD / 2 + 18));
+        tcpGroup.add(tip);
+      });
+    });
+
+    // High-Velocity Slotted Air Knife on bottom edge
+    const airKnife = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.9, 14, 22)), MAT.platenSteel);
+    airKnife.position.set(0, -blockH / 2 - 8, 0);
+    tcpGroup.add(airKnife);
+
+    const slit = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.82, 3, 24)), MAT.castRecess);
+    slit.position.set(0, -blockH / 2 - 13, 0);
+    tcpGroup.add(slit);
+
+    // Top direct rigid stainless fluid inlet nipples (clean, zero external hoses)
+    [-mWidth * 0.22, mWidth * 0.22].forEach(px => {
+      const nipple = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(9, 9, 28, 12)), MAT.chromeTieBar);
+      nipple.position.set(px, blockH / 2 + 14, 0);
+      tcpGroup.add(nipple);
+    });
+
+  } else if (activeEoatType === 'MODULAR') {
+    // =========================================================================
+    // 2. MODULAR EOAT: Dual T-Slot Extruded Rails, Adjustable Sliders & Visible Hoses
+    // =========================================================================
+    const railW = Math.max(420, mWidth);
+    const railSpacingY = 56;
+
+    // Dual Extruded Structural Aluminum Profile Rails (40x40 Profile)
+    [-1, 1].forEach(sideY => {
+      const rail = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(railW, 26, 32)), MAT.platenSteel);
+      rail.position.set(0, sideY * railSpacingY, 0);
+      rail.castShadow = true;
+      tcpGroup.add(rail);
+
+      // Dark T-slot groove in center
+      const slot = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(railW + 2, 7, 5)), MAT.jointDark);
+      slot.position.set(0, sideY * railSpacingY, 15);
+      tcpGroup.add(slot);
+
+      const slotBack = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(railW + 2, 7, 5)), MAT.jointDark);
+      slotBack.position.set(0, sideY * railSpacingY, -15);
+      tcpGroup.add(slotBack);
+    });
+
+    // End Plates tying the two rails
+    [-1, 1].forEach(sideX => {
+      const endPlate = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(10, railSpacingY * 2 + 34, 38)), MAT.platenSteel);
+      endPlate.position.set(sideX * (railW / 2 - 5), 0, 0);
+      tcpGroup.add(endPlate);
+    });
+
+    // Central Distribution Junction Manifold Block
+    const hub = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(90, railSpacingY * 2 + 20, 68)), MAT.toolBlue);
+    hub.castShadow = true;
+    tcpGroup.add(hub);
+
+    // Miniature Dial Pressure Gauge on top of Hub
+    const gaugeBody = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(15, 15, 8, 16)), MAT.cabinetGrey);
+    gaugeBody.position.set(0, railSpacingY + 22, 10);
+    tcpGroup.add(gaugeBody);
+
+    const gaugeGlass = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(12, 12, 1, 16)), MAT.screenGlass);
+    gaugeGlass.position.set(0, railSpacingY + 26.5, 10);
+    tcpGroup.add(gaugeGlass);
+
+    // 4 Independently Clamped Slider Carriages along Rails
+    const sliderXs = [-railW * 0.35, -railW * 0.16, railW * 0.16, railW * 0.35];
+    sliderXs.forEach((sx, idx) => {
+      const isTop = idx % 2 === 0;
+      const sy = isTop ? railSpacingY : -railSpacingY;
+
+      // Sliding Clamp Block with lock screw
+      const clampBlock = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(38, 48, 42)), MAT.aluminumPart);
+      clampBlock.position.set(sx, sy, 0);
+      tcpGroup.add(clampBlock);
+
+      const lockScrew = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(4, 4, 8, 6)), MAT.brass);
+      lockScrew.position.set(sx, sy + (isTop ? 26 : -26), 0);
+      tcpGroup.add(lockScrew);
+
+      // Swivel Knuckle (Ball Joint)
+      const swivelBall = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(10, 12, 12)), MAT.brass);
+      swivelBall.position.set(sx, sy, -24);
+      tcpGroup.add(swivelBall);
+
+      // Stainless Steel Extension Tube / Lance reaching toward Fixed cavity
+      const lanceLen = 85 + (idx % 2) * 35;
+      const lance = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(5, 5, lanceLen, 12)), MAT.chromeTieBar);
       lance.rotation.x = Math.PI / 2;
-      lance.position.set(lx, 0, -120);
+      lance.rotation.y = (idx - 1.5) * 0.12; // Articulated fan-out
+      lance.position.set(sx, sy, -24 - lanceLen / 2);
       tcpGroup.add(lance);
 
-      const brassTip = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(15, 12, 12)), MAT.brass);
-      brassTip.position.set(lx, 0, -240);
+      // Brass Nozzle Tip
+      const brassTip = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(7, 14, 12)), MAT.brass);
+      brassTip.rotation.x = -Math.PI / 2;
+      brassTip.position.set(sx, sy, -24 - lanceLen);
       tcpGroup.add(brassTip);
-    });
-  } else {
-    // Micro-Spray / Conventional Manifold
-    const bar = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth, 48, 38)), MAT.platenSteel);
-    tcpGroup.add(bar);
 
-    const nozzleStrip = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(mWidth * 0.9, 10, 8)), MAT.brass);
-    nozzleStrip.position.set(0, 0, -22);
-    tcpGroup.add(nozzleStrip);
+      // Opposing Wand reaching toward Moving cavity (+Z)
+      const lanceMov = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(5, 5, lanceLen, 12)), MAT.chromeTieBar);
+      lanceMov.rotation.x = Math.PI / 2;
+      lanceMov.position.set(sx, sy, 24 + lanceLen / 2);
+      tcpGroup.add(lanceMov);
+
+      const brassTipMov = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(7, 14, 12)), MAT.brass);
+      brassTipMov.rotation.x = Math.PI / 2;
+      brassTipMov.position.set(sx, sy, 24 + lanceLen);
+      tcpGroup.add(brassTipMov);
+
+      // Brass 90° Push-In Elbow Fitting on Carriage
+      const elbow = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(4.5, 4.5, 12, 8)), MAT.brass);
+      elbow.position.set(sx, sy + 18, 0);
+      tcpGroup.add(elbow);
+
+      // Visible Polyurethane Fluid & Air Hoses connecting from Hub to Carriage
+      const hoseColor = idx % 2 === 0 ? MAT.toolBlue : MAT.conduitBlack;
+      const hoseSpanX = Math.abs(sx) - 40;
+      if (hoseSpanX > 10) {
+        const hoseH = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(3.5, 3.5, hoseSpanX, 8)), hoseColor);
+        hoseH.rotation.z = Math.PI / 2;
+        hoseH.position.set(sx > 0 ? 45 + hoseSpanX / 2 : -45 - hoseSpanX / 2, sy + 16, 22);
+        tcpGroup.add(hoseH);
+      }
+    });
+
+  } else if (activeEoatType === 'MATRIX') {
+    // =========================================================================
+    // 3. MATRIX EOAT: Large Flat Grid Array (6x4 Nozzle Array) for Structural Dies
+    // =========================================================================
+    const gridW = Math.max(540, mWidth);
+    const gridH = Math.max(340, mHeight);
+
+    // Heavy Structural Perimeter Box-Truss Frame
+    const topBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gridW, 26, 32)), MAT.toolBlue);
+    topBeam.position.set(0, gridH / 2 - 13, 0);
+    topBeam.castShadow = true;
+    tcpGroup.add(topBeam);
+
+    const botBeam = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gridW, 26, 32)), MAT.toolBlue);
+    botBeam.position.set(0, -gridH / 2 + 13, 0);
+    botBeam.castShadow = true;
+    tcpGroup.add(botBeam);
+
+    const leftCol = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(26, gridH, 32)), MAT.toolBlue);
+    leftCol.position.set(-gridW / 2 + 13, 0, 0);
+    tcpGroup.add(leftCol);
+
+    const rightCol = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(26, gridH, 32)), MAT.toolBlue);
+    rightCol.position.set(gridW / 2 - 13, 0, 0);
+    tcpGroup.add(rightCol);
+
+    // Center Vertical Structural Rib Spine
+    const centerRib = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(32, gridH - 52, 34)), MAT.platenSteel);
+    centerRib.position.set(0, 0, 0);
+    tcpGroup.add(centerRib);
+
+    // Diagonal Corner Gusset Stiffeners
+    [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([gx, gy]) => {
+      const gusset = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(45, 45, 12)), MAT.platenSteel);
+      gusset.rotation.z = Math.PI / 4;
+      gusset.position.set(gx * (gridW / 2 - 40), gy * (gridH / 2 - 40), 0);
+      tcpGroup.add(gusset);
+    });
+
+    // Central Perforated Grid Mounting Bed
+    const gridPlate = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gridW - 56, gridH - 56, 8)), MAT.aluminumPart);
+    gridPlate.position.set(0, 0, 0);
+    tcpGroup.add(gridPlate);
+
+    // Dual High-Volume Stainless Steel Supply Header Manifolds (Top & Bottom)
+    [-1, 1].forEach(sideY => {
+      const header = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(15, 15, gridW - 40, 16)), MAT.chromeTieBar);
+      header.rotation.z = Math.PI / 2;
+      header.position.set(0, sideY * (gridH / 2 - 28), 0);
+      tcpGroup.add(header);
+    });
+
+    // Uniform 4-Column x 3-Row Twin-Fluid Brass Nozzle Matrix (12 Fixed Die / 12 Moving Die = 24 Nozzles)
+    const cols = [-gridW * 0.32, -gridW * 0.11, gridW * 0.11, gridW * 0.32];
+    const rows = [gridH * 0.25, 0, -gridH * 0.25];
+
+    [-1, 1].forEach(dirZ => {
+      cols.forEach(cx => {
+        rows.forEach(ry => {
+          // Hex Base Collar
+          const nzBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7, 7, 10, 6)), MAT.brass);
+          nzBase.rotation.x = Math.PI / 2;
+          nzBase.position.set(cx, ry, dirZ * 16);
+          tcpGroup.add(nzBase);
+
+          // Standardized Atomizing Air Nozzle Cap
+          const nzCap = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(4.5, 6.5, 12, 12)), MAT.brass);
+          nzCap.rotation.x = dirZ < 0 ? -Math.PI / 2 : Math.PI / 2;
+          nzCap.position.set(cx, ry, dirZ * 26);
+          tcpGroup.add(nzCap);
+        });
+      });
+    });
+
+    // Heavy Braided Stainless Steel Supply Umbilicals from Flange to Headers
+    [-1, 1].forEach(sideY => {
+      const hoseLoop = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(14, 14, gridH * 0.38, 12)), MAT.chromeTieBar);
+      hoseLoop.position.set(0, sideY * (gridH * 0.2), 35);
+      tcpGroup.add(hoseLoop);
+
+      // Flanged Swivel Joint with Bolt Ring
+      const swivel = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(20, 20, 12, 16)), MAT.jointDark);
+      swivel.position.set(0, sideY * (gridH / 2 - 28), 35);
+      tcpGroup.add(swivel);
+    });
+
+    // Full-Width Air Curtain Knives (Top & Bottom)
+    [-1, 1].forEach(sideY => {
+      const airCurtain = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(gridW - 20, 10, 18)), MAT.platenSteel);
+      airCurtain.position.set(0, sideY * (gridH / 2 + 5), 0);
+      tcpGroup.add(airCurtain);
+    });
+
+  } else {
+    // =========================================================================
+    // 4. MICRO_DOSING EOAT: Surgical Hard-Anodized Manifold, Pulse Solenoids, Suck-Back
+    // =========================================================================
+    const microW = Math.min(300, mWidth);
+    const microH = Math.min(110, mHeight);
+    const microD = Math.min(75, mDepth);
+
+    // Precision CNC Hard-Anodized Manifold Core
+    const microCore = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(microW, microH * 0.65, microD * 0.8)), MAT.jointDark);
+    microCore.castShadow = true;
+    tcpGroup.add(microCore);
+
+    // Beveled corner casing accents in anodized silver
+    [-1, 1].forEach(sideX => {
+      const cap = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(10, microH * 0.62, microD * 0.78)), MAT.aluminumPart);
+      cap.position.set(sideX * (microW / 2 + 5), 0, 0);
+      tcpGroup.add(cap);
+    });
+
+    // Bank of 8 Precision Micro-Dosing Solenoid Valves (4 Fixed Side / 4 Moving Side)
+    const valveXs = [-microW * 0.32, -microW * 0.11, microW * 0.11, microW * 0.32];
+    [-1, 1].forEach(dirZ => {
+      valveXs.forEach(vx => {
+        // Cylindrical Solenoid Actuator Body
+        const solenoid = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(10, 10, 36, 16)), MAT.platenSteel);
+        solenoid.position.set(vx, 22, dirZ * 18);
+        tcpGroup.add(solenoid);
+
+        // Active Status Green LED Ring on Top
+        const ledRing = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(10.5, 10.5, 4, 16)), MAT.alertGreen);
+        ledRing.position.set(vx, 41, dirZ * 18);
+        tcpGroup.add(ledRing);
+
+        // Zero-Drip Suck-Back Diaphragm Chamber (Bottom)
+        const suckBackChamber = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(13, 13, 10, 16)), MAT.aluminumPart);
+        suckBackChamber.position.set(vx, -22, dirZ * 18);
+        tcpGroup.add(suckBackChamber);
+
+        // Micro-Orifice Needle Injector Nozzle
+        const needle = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(2.5, 2.5, 18, 12)), MAT.brass);
+        needle.rotation.x = Math.PI / 2;
+        needle.position.set(vx, 0, dirZ * (microD / 2 + 10));
+        tcpGroup.add(needle);
+
+        // Fine Atomizing Air Cone Tip
+        const airTip = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(5, 10, 12)), MAT.brass);
+        airTip.rotation.x = dirZ < 0 ? -Math.PI / 2 : Math.PI / 2;
+        airTip.position.set(vx, 0, dirZ * (microD / 2 + 20));
+        tcpGroup.add(airTip);
+      });
+    });
+
+    // Dual Digital Pressure Transducers with Display Screen
+    const transducerBox = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(46, 32, 26)), MAT.platenSteel);
+    transducerBox.position.set(0, 0, microD / 2 + 14);
+    tcpGroup.add(transducerBox);
+
+    const digitalScreen = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(36, 16)), MAT.screenGlass);
+    digitalScreen.position.set(0, 0, microD / 2 + 27.5);
+    tcpGroup.add(digitalScreen);
+
+    // Micro-Bore 3mm Polished Stainless Fluid Lines and M12 Electrical Connector
+    const m12Plug = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7, 7, 18, 16)), MAT.jointDark);
+    m12Plug.position.set(-microW * 0.36, -microH * 0.38, 0);
+    tcpGroup.add(m12Plug);
+
+    const m12GoldRing = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(7.5, 7.5, 4, 16)), MAT.brass);
+    m12GoldRing.position.set(-microW * 0.36, -microH * 0.38 + 6, 0);
+    tcpGroup.add(m12GoldRing);
   }
 
   // =========================================================================
