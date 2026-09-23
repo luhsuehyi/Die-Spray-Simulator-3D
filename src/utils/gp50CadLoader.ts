@@ -19,6 +19,18 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export type Gp50PartName = 'BASE' | 'J1_S' | 'J2_L' | 'J3_U' | 'J4_R' | 'J5_B' | 'J6_T';
 
+export interface Gp50Manifest {
+  robotModel: string;
+  pivots: Record<'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6', [number, number, number]>;
+  axes: Record<'J1' | 'J2' | 'J3' | 'J4' | 'J5' | 'J6', [number, number, number]>;
+  flangeOffset: [number, number, number];
+  materials: {
+    YaskawaBlue: string;
+    AccentSilver: string;
+    DarkGrey: string;
+  };
+}
+
 /** Rig part order = attach order: index 0 -> baseGroup, index i -> jointGroups[i-1]. */
 export const GP50_PART_ORDER: Gp50PartName[] = ['BASE', 'J1_S', 'J2_L', 'J3_U', 'J4_R', 'J5_B', 'J6_T'];
 
@@ -36,6 +48,47 @@ export const GP50_PART_COLORS: Record<Gp50PartName, number> = {
   J5_B: 0x02569b,
   J6_T: 0xb4b9c0
 };
+
+/** Parse CAD node names, apply the manifest material scheme, and enable shadows. */
+export function buildGp50CadHierarchy(gltfScene: THREE.Group, manifest: Gp50Manifest): THREE.Group {
+  const blue = new THREE.MeshStandardMaterial({
+    color: manifest.materials.YaskawaBlue,
+    metalness: 0.25,
+    roughness: 0.42
+  });
+  const silver = new THREE.MeshStandardMaterial({
+    color: manifest.materials.AccentSilver,
+    metalness: 0.45,
+    roughness: 0.32
+  });
+  const dark = new THREE.MeshStandardMaterial({
+    color: manifest.materials.DarkGrey,
+    metalness: 0.55,
+    roughness: 0.38
+  });
+
+  gltfScene.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+
+    const name = object.name.toUpperCase();
+    const isBlueLink =
+      name.startsWith('L_') || name.startsWith('U_') || name.startsWith('S_') ||
+      name.endsWith('_L') || name.endsWith('_U') || name.endsWith('_S');
+    const isSilverLink =
+      name.startsWith('R_') || name.startsWith('B_') || name.startsWith('T_') ||
+      name.endsWith('_R') || name.endsWith('_B') || name.endsWith('_T');
+
+    if (isBlueLink) mesh.material = blue;
+    else if (isSilverLink) mesh.material = silver;
+    else if (name === 'BASE' || name.startsWith('BASE_')) mesh.material = dark;
+
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+  });
+
+  return gltfScene;
+}
 
 export type Gp50CadStatus = 'loading' | 'ready' | 'failed';
 export const GP50_CAD_STATUS_EVENT = 'gp50-cad-status';
@@ -84,7 +137,7 @@ export function loadGp50CadParts(): Promise<Gp50CadParts> {
     const errors: string[] = [];
     for (const url of candidateUrls()) {
       try {
-        const parts = await loadFromUrl(url);
+        const parts = await loadFromUrl(url, manifest);
         emitStatus('ready');
         return parts;
       } catch (e: any) {
