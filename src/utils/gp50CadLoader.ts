@@ -108,13 +108,16 @@ function candidateUrls(): string[] {
 export interface Gp50CadParts {
   /** Geometry per CAD part, in CAD axes, relative to the part's own joint pivot. */
   geometry: Record<Gp50PartName, THREE.BufferGeometry>;
+  /** Manifest used to build and render this CAD hierarchy. */
+  manifest: Gp50Manifest;
   triangleCount: number;
 }
 
 let cachedParts: Promise<Gp50CadParts> | null = null;
 
-async function loadFromUrl(url: string): Promise<Gp50CadParts> {
+async function loadFromUrl(url: string, manifest: Gp50Manifest): Promise<Gp50CadParts> {
   const gltf = await new GLTFLoader().loadAsync(url);
+  buildGp50CadHierarchy(gltf.scene, manifest);
   const geometry = {} as Record<Gp50PartName, THREE.BufferGeometry>;
   let triangleCount = 0;
   for (const name of GP50_PART_ORDER) {
@@ -126,7 +129,7 @@ async function loadFromUrl(url: string): Promise<Gp50CadParts> {
     geometry[name] = g;
     triangleCount += (g.index ? g.index.count : g.getAttribute('position').count) / 3;
   }
-  return { geometry, triangleCount };
+  return { geometry, manifest, triangleCount };
 }
 
 /** Loads (once) the 7 CAD part geometries. Rejects with a descriptive error; never falls back to generic geometry. */
@@ -134,6 +137,14 @@ export function loadGp50CadParts(): Promise<Gp50CadParts> {
   if (cachedParts) return cachedParts;
   emitStatus('loading');
   cachedParts = (async () => {
+    const manifestBase = ((import.meta as any)?.env?.BASE_URL ?? '/').replace(/\/$/, '');
+    const manifestUrl = `${manifestBase}/models/gp50/gp50_manifest.json`;
+    const manifestResponse = await fetch(manifestUrl);
+    if (!manifestResponse.ok) {
+      throw new Error(`Failed to load GP50 manifest (${manifestResponse.status} ${manifestResponse.statusText})`);
+    }
+    const manifest = (await manifestResponse.json()) as Gp50Manifest;
+
     const errors: string[] = [];
     for (const url of candidateUrls()) {
       try {
@@ -153,12 +164,13 @@ export function loadGp50CadParts(): Promise<Gp50CadParts> {
   return cachedParts;
 }
 
-const materialCache = new Map<number, THREE.MeshStandardMaterial>();
-function materialFor(color: number): THREE.MeshStandardMaterial {
-  let m = materialCache.get(color);
+const materialCache = new Map<string, THREE.MeshStandardMaterial>();
+function materialFor(color: string | number): THREE.MeshStandardMaterial {
+  const key = String(color);
+  let m = materialCache.get(key);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.42 });
-    materialCache.set(color, m);
+    materialCache.set(key, m);
   }
   return m;
 }
@@ -182,7 +194,12 @@ export function attachGp50CadParts(
     const holder = new THREE.Group();
     holder.name = `GP50_CAD_${name}`;
     holder.quaternion.copy(CAD_TO_ROBOT_Q);
-    const mesh = new THREE.Mesh(parts.geometry[name], materialFor(GP50_PART_COLORS[name]));
+    const materialColor = name === 'BASE'
+      ? parts.manifest.materials.DarkGrey
+      : ['J1_S', 'J2_L', 'J3_U'].includes(name)
+        ? parts.manifest.materials.YaskawaBlue
+        : parts.manifest.materials.AccentSilver;
+    const mesh = new THREE.Mesh(parts.geometry[name], materialFor(materialColor));
     mesh.name = `GP50_CAD_${name}_mesh`;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
