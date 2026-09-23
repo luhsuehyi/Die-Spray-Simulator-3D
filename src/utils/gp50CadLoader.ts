@@ -137,16 +137,17 @@ export function loadGp50CadParts(): Promise<Gp50CadParts> {
   if (cachedParts) return cachedParts;
   emitStatus('loading');
   cachedParts = (async () => {
-    const manifestBase = ((import.meta as any)?.env?.BASE_URL ?? '/').replace(/\/$/, '');
-    const manifestUrl = `${manifestBase}/models/gp50/gp50_manifest.json`;
-    const manifestResponse = await fetch(manifestUrl);
-    if (!manifestResponse.ok) {
-      throw new Error(`Failed to load GP50 manifest (${manifestResponse.status} ${manifestResponse.statusText})`);
-    }
-    const manifest = (await manifestResponse.json()) as Gp50Manifest;
+    try {
+      const manifestBase = ((import.meta as any)?.env?.BASE_URL ?? '/').replace(/\/$/, '');
+      const manifestUrl = `${manifestBase}/models/gp50/gp50_manifest.json`;
+      const manifestResponse = await fetch(manifestUrl);
+      if (!manifestResponse.ok) {
+        throw new Error(`Failed to load GP50 manifest (${manifestResponse.status} ${manifestResponse.statusText})`);
+      }
+      const manifest = (await manifestResponse.json()) as Gp50Manifest;
 
-    const errors: string[] = [];
-    for (const url of candidateUrls()) {
+      const errors: string[] = [];
+      for (const url of candidateUrls()) {
       try {
         const parts = await loadFromUrl(url, manifest);
         emitStatus('ready');
@@ -155,11 +156,18 @@ export function loadGp50CadParts(): Promise<Gp50CadParts> {
         errors.push(`${url}: ${e?.message ?? e}`);
       }
     }
-    const message = `Yaskawa GP50 CAD model could not be loaded. Tried:\n${errors.join('\n')}`;
-    console.error('[GP50 CAD]', message);
-    emitStatus('failed', message);
-    cachedParts = null; // allow a retry on the next rig build
-    throw new Error(message);
+      const message = `Yaskawa GP50 CAD model could not be loaded. Tried:\n${errors.join('\n')}`;
+      console.error('[GP50 CAD]', message);
+      emitStatus('failed', message);
+      cachedParts = null; // allow a retry on the next rig build
+      throw new Error(message);
+    } catch (error: any) {
+      const message = error?.message ?? String(error);
+      console.error('[GP50 CAD]', message);
+      emitStatus('failed', message);
+      cachedParts = null; // allow a retry on the next rig build
+      throw error;
+    }
   })();
   return cachedParts;
 }
