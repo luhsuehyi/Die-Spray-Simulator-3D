@@ -7,9 +7,9 @@
     "J1": {
       "part": "S",
       "pivot": [
-        0.0,
-        0.0,
-        0.0
+        0,
+        0,
+        0
       ],
       "axis": [
         0,
@@ -20,9 +20,9 @@
     "J2": {
       "part": "L",
       "pivot": [
-        144.0,
-        540.0,
-        0.0
+        144,
+        540,
+        0
       ],
       "axis": [
         0,
@@ -33,9 +33,9 @@
     "J3": {
       "part": "U",
       "pivot": [
-        144.0,
-        1410.0,
-        0.0
+        144,
+        1410,
+        0
       ],
       "axis": [
         0,
@@ -46,9 +46,9 @@
     "J4": {
       "part": "R",
       "pivot": [
-        1170.0,
-        1620.0,
-        0.0
+        1170,
+        1620,
+        0
       ],
       "axis": [
         1,
@@ -59,9 +59,9 @@
     "J5": {
       "part": "B",
       "pivot": [
-        1170.0,
-        1620.0,
-        0.0
+        1170,
+        1620,
+        0
       ],
       "axis": [
         0,
@@ -72,9 +72,9 @@
     "J6": {
       "part": "T",
       "pivot": [
-        1170.0,
-        1620.0,
-        0.0
+        1170,
+        1620,
+        0
       ],
       "axis": [
         1,
@@ -85,14 +85,14 @@
   },
   "flange": {
     "fromJ6": [
-      175.0,
-      0.0,
-      0.0
+      175,
+      0,
+      0
     ],
     "positionCad": [
-      1345.0,
-      1620.0,
-      0.0
+      1345,
+      1620,
+      0
     ],
     "approachAxis": [
       1,
@@ -101,14 +101,14 @@
     ]
   },
   "derivedLinks": {
-    "baseHeight_d1": 540.0,
-    "shoulderOffset_a1": 144.0,
-    "upperArm_J2toJ3": 870.0,
+    "baseHeight_d1": 540,
+    "shoulderOffset_a1": 144,
+    "upperArm_J2toJ3": 870,
     "forearm_J3toWristCentre": {
-      "along_X": 1026.0,
-      "up_Y": 210.0
+      "along_X": 1026,
+      "up_Y": 210
     },
-    "wristCentreToFlange": 175.0
+    "wristCentreToFlange": 175
   },
   "evidence": "Exact STEP CYLINDRICAL_SURFACE axes: J1 (BASE/S r=190..290 about Y through origin); J2 (S/L r=142..175 about Z through (144,540)); J3 (L/U r=104..165 about Z through (144,1410)); J4/J6 (U/R/B/T r=25..127 about X through y=1620,z=0); J5 (R/B r=69..92 about Z through (1170,1620)).",
   "stats": {
@@ -148,5 +148,80 @@
       "triangles": 2164
     }
   },
-  "colorsInSource": "none (STEP has 0 STYLED_ITEM/COLOUR_RGB; GLB has single material mat_0)"
+  "colorsInSource": "none (STEP has 0 STYLED_ITEM/COLOUR_RGB; GLB has single material mat_0)",
+  "robotModel": "Yaskawa GP50",
+  "pivots": {
+    "J1": [
+      0,
+      0,
+      0
+    ],
+    "J2": [
+      144,
+      540,
+      0
+    ],
+    "J3": [
+      144,
+      1410,
+      0
+    ],
+    "J4": [
+      1170,
+      1620,
+      0
+    ],
+    "J5": [
+      1170,
+      1620,
+      0
+    ],
+    "J6": [
+      1170,
+      1620,
+      0
+    ]
+  },
+  "axes": {
+    "J1": [
+      0,
+      1,
+      0
+    ],
+    "J2": [
+      0,
+      0,
+      1
+    ],
+    "J3": [
+      0,
+      0,
+      1
+    ],
+    "J4": [
+      1,
+      0,
+      0
+    ],
+    "J5": [
+      0,
+      0,
+      1
+    ],
+    "J6": [
+      1,
+      0,
+      0
+    ]
+  },
+  "flangeOffset": [
+    175,
+    0,
+    0
+  ],
+  "materials": {
+    "YaskawaBlue": "#00539C",
+    "AccentSilver": "#A5ACAF",
+    "DarkGrey": "#2B3038"
+  }
 }

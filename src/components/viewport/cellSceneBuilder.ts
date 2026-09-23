@@ -1101,12 +1101,10 @@ export function createRobotArmRig(
   // 2. INDUSTRIAL ROBOT 3D MESH GEOMETRIES & ATTACHMENTS
   // =========================================================================
 
-  // Track procedural arm meshes to hide/remove them when actual CAD model is loaded
-  const proceduralArmMeshes: THREE.Object3D[] = [];
+  // GP50 is CAD-only: procedural arm geometry is never attached when a measured CAD chain exists.
+  // Other robot families retain the existing procedural geometry path.
   const addProcedural = <T extends THREE.Object3D>(parent: THREE.Object3D, mesh: T): T => {
-    // CAD robots (GP50) never get the procedural arm: the CAD assembly is the only visible robot.
     if (cad) return mesh;
-    proceduralArmMeshes.push(mesh);
     parent.add(mesh);
     return mesh;
   };
@@ -1703,16 +1701,17 @@ export function createRobotArmRig(
     dispose
   };
 
-  // Robots with a CAD-measured chain (Yaskawa GP50): mount the real CAD parts on the rig.
-  // No procedural fallback: if the asset fails to load, a visible error is raised (see
-  // GP50_CAD_STATUS_EVENT, shown as a banner by SimulationCanvas) and the console reports why.
+  // Yaskawa GP50: load the real CAD asset directly. There is deliberately no procedural
+  // fallback; a missing/invalid asset is surfaced through the GP50 CAD status event.
   if (cad) {
     loadGp50CadParts()
       .then(parts => {
         attachGp50CadParts(baseGroup, allJointGroups, parts);
         updatePose(lastJointsDeg);
       })
-      .catch(() => { /* already reported via console.error + status event */ });
+      .catch(error => {
+        console.error('[GP50 CAD] Direct CAD asset load failed:', error);
+      });
   }
 
   return rig;
