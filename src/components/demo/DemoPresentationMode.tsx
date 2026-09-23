@@ -53,7 +53,6 @@ export const DemoPresentationMode: React.FC = () => {
   const progressPct = Math.min(100, (currentTimeSec / totalDuration) * 100);
   const activeShot = CAMERA_SHOTS.find((s) => s.id === demoPhase) ?? CAMERA_SHOTS[0];
 
-  // Auto-advance camera shots based on playback progress
   useEffect(() => {
     if (!isDemoMode || !isPlaying) return;
     const progressFrac = Math.min(1, Math.max(0, currentTimeSec / totalDuration));
@@ -70,7 +69,6 @@ export const DemoPresentationMode: React.FC = () => {
     }
   }, [isDemoMode, isPlaying, currentTimeSec, totalDuration, demoPhase, setDemoPhase]);
 
-  // Re-trigger phase title animation when phase changes
   useEffect(() => {
     if (prevPhaseRef.current !== demoPhase) {
       setTitleVisible(false);
@@ -115,12 +113,9 @@ export const DemoPresentationMode: React.FC = () => {
 
   return (
     <div className="absolute inset-0 pointer-events-none z-30 flex flex-col justify-between p-4 sm:p-6 select-none font-sans">
-      {/* Soft cinematic vignette */}
       <div className="absolute inset-0 demo-vignette" />
 
-      {/* Top Bar */}
       <div className="relative flex items-start justify-between gap-4">
-        {/* Branding card */}
         <div className="pointer-events-auto glass-panel-strong rounded-xl p-3.5 shadow-2xl max-w-md">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="w-2 h-2 rounded-full bg-cyan-400 live-indicator" />
@@ -143,7 +138,6 @@ export const DemoPresentationMode: React.FC = () => {
           </div>
         </div>
 
-        {/* Actions */}
         <div className="pointer-events-auto flex items-center gap-2.5">
           {recordingProgress.state !== 'idle' && (
             <div className="px-3 py-2 rounded-xl glass-panel-strong text-xs font-mono flex items-center gap-2 shadow-2xl">
@@ -155,22 +149,10 @@ export const DemoPresentationMode: React.FC = () => {
                   </span>
                 </>
               )}
-              {recordingProgress.state === 'rendering' && (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                  <span className="text-amber-400 font-semibold">Rendering frames…</span>
-                </>
-              )}
-              {recordingProgress.state === 'encoding' && (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
-                  <span className="text-blue-400 font-semibold">Encoding H.264 MP4…</span>
-                </>
-              )}
               {recordingProgress.state === 'complete' && (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400 font-semibold">Export Complete</span>
+                  <span className="text-emerald-400 font-semibold">Download ready (WebM)</span>
                 </>
               )}
               {recordingProgress.state === 'error' && (
@@ -182,7 +164,6 @@ export const DemoPresentationMode: React.FC = () => {
           <button
             id="record-demo-btn"
             onClick={handleToggleRecord}
-            disabled={recordingProgress.state === 'rendering' || recordingProgress.state === 'encoding'}
             className={`px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm flex items-center gap-2 transition-all shadow-xl cursor-pointer ${
               recordingProgress.state === 'recording'
                 ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
@@ -208,7 +189,6 @@ export const DemoPresentationMode: React.FC = () => {
         </div>
       </div>
 
-      {/* Center: Cinematic phase title */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         {titleVisible && (
           <div
@@ -229,9 +209,7 @@ export const DemoPresentationMode: React.FC = () => {
         )}
       </div>
 
-      {/* Bottom transport bar */}
       <div className="relative pointer-events-auto max-w-3xl w-full mx-auto glass-panel-strong rounded-2xl p-4 shadow-2xl">
-        {/* Progress track */}
         <div className="h-0.5 w-full bg-slate-800/80 rounded-full mb-3 overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 phase-progress-fill rounded-full"
@@ -280,7 +258,6 @@ export const DemoPresentationMode: React.FC = () => {
           </div>
         </div>
 
-        {/* Camera shot pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pt-1 border-t border-slate-800/60">
           <div className="text-[10px] font-mono uppercase text-slate-500 shrink-0 mr-1 flex items-center gap-1">
             <Camera className="w-3 h-3 text-cyan-400" />
