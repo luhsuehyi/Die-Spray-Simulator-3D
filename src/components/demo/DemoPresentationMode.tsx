@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   X,
   Camera,
-  Loader2,
   Sparkles
 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
@@ -16,13 +15,14 @@ import {
   RecorderProgress
 } from '../../utils/videoRecorder';
 
+/** Full automated HPDC cell story — 6 cinematic beats */
 export const CAMERA_SHOTS = [
-  { id: 0, label: '1. Cell Establishing', short: 'Establishing', desc: 'Full-cell establishing overview' },
-  { id: 1, label: '2. Robot Approach', short: 'Approach', desc: 'Top robot descent into platen daylight' },
-  { id: 2, label: '3. Spray Process', short: 'Spray', desc: 'Close-up of high-speed atomized lube spray' },
-  { id: 3, label: '4. Die Coverage', short: 'Coverage', desc: 'Fixed & movable core cavity face coverage' },
-  { id: 4, label: '5. Robot Retract', short: 'Retract', desc: 'Retract to top platen stationary home' },
-  { id: 5, label: '6. Final Overview', short: 'Overview', desc: 'Complete HPDC manufacturing cell' }
+  { id: 0, label: '1. Cell Establishing', short: 'Establishing', desc: 'Full cell: machine, top-mount GP50, extractor, quench' },
+  { id: 1, label: '2. Die Open / Approach', short: 'Approach', desc: 'Platens open — robot descends into daylight' },
+  { id: 2, label: '3. Spray / Lube', short: 'Spray', desc: 'Atomized release agent on fixed & movable faces' },
+  { id: 3, label: '4. Coverage Check', short: 'Coverage', desc: 'Cavity coverage and clearance confirmation' },
+  { id: 4, label: '5. Retract / Close', short: 'Retract', desc: 'Robot clears — mold ready to close' },
+  { id: 5, label: '6. Cycle Overview', short: 'Overview', desc: 'Complete automated HPDC manufacturing cell' }
 ];
 
 export const DemoPresentationMode: React.FC = () => {
@@ -64,9 +64,7 @@ export const DemoPresentationMode: React.FC = () => {
     else if (progressFrac < 0.94) targetPhase = 4;
     else targetPhase = 5;
 
-    if (targetPhase !== demoPhase) {
-      setDemoPhase(targetPhase);
-    }
+    if (targetPhase !== demoPhase) setDemoPhase(targetPhase);
   }, [isDemoMode, isPlaying, currentTimeSec, totalDuration, demoPhase, setDemoPhase]);
 
   useEffect(() => {
@@ -85,22 +83,15 @@ export const DemoPresentationMode: React.FC = () => {
       stopDemoRecording();
       return;
     }
-
     const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
     if (!canvas) {
       alert('Simulation canvas not found for recording');
       return;
     }
-
     setCurrentTimeSec(0);
     setIsPlaying(true);
     setDemoPhase(0);
-
-    startDemoRecording(
-      canvas,
-      (p) => setRecordingProgress(p),
-      Math.min(30, Math.ceil(totalDuration))
-    );
+    startDemoRecording(canvas, (p) => setRecordingProgress(p), Math.min(30, Math.ceil(totalDuration)));
   };
 
   const formatTime = (sec: number) => {
@@ -120,7 +111,7 @@ export const DemoPresentationMode: React.FC = () => {
           <div className="flex items-center gap-2 mb-1.5">
             <span className="w-2 h-2 rounded-full bg-cyan-400 live-indicator" />
             <span className="text-[10px] font-mono font-bold tracking-[0.18em] text-cyan-400 uppercase">
-              AI Optimized Solution
+              Automated HPDC Cell
             </span>
           </div>
           <h2 className="text-base font-bold text-white tracking-tight leading-snug">
