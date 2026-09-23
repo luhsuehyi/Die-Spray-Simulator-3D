@@ -45,7 +45,7 @@ import { MACHINE_PRESETS, ROBOT_PRESETS, SPRAY_HEAD_PRESETS, EOAT_PRESETS } from
 import { evaluateEoatCompatibility } from '../../utils/eoatCompatibility';
 import { SAMPLE_CAST_PARTS } from '../../utils/castPartPresets';
 import { diagnoseCellProblems } from '../../utils/robotPositionAdvisor';
-import { SprayHeadType, RobotMountType, EoatType } from '../../types/robot';
+import { SprayHeadType, RobotMountType, EoatType, SprayNozzleConfig, CellCyclePhase } from '../../types/robot';
 
 export const ManufacturingPanel: React.FC = () => {
   const {
@@ -96,7 +96,23 @@ export const ManufacturingPanel: React.FC = () => {
     selectCastPart,
     selectGripCandidate,
     selectCellOption,
-    applyCellDesignToSimulation
+    applyCellDesignToSimulation,
+
+    // Digital Twin Synchronized Cycle State & Kinematics
+    cycleConfig,
+    currentCyclePhase,
+    cyclePhaseProgress,
+    totalCycleProgress,
+    platenOpenPercent,
+    ejectorStrokeMm,
+    injectionFillPercent,
+    isSprayerInDaylight,
+    isExtractorInDaylight,
+    isPartGripped,
+    setCycleConfig,
+    jumpToCyclePhase,
+    setDcmClampingForce,
+    setPlatenOpenDistance
   } = useSimulationStore();
 
   const problems = diagnoseCellProblems(robot, machine, die, waypoints);
@@ -108,6 +124,14 @@ export const ManufacturingPanel: React.FC = () => {
 
   const activeEoatPreset = SPRAY_HEAD_PRESETS.find(p => p.id === tool.sprayHeadType) || SPRAY_HEAD_PRESETS[0];
   const activeEoatSpec = tool.eoatSpec || activeEoatPreset.eoatSpec || EOAT_PRESETS.find(e => e.id === activeEoatPreset.id);
+
+  const currentArchetype: EoatType =
+    tool.eoatType ||
+    (tool.sprayHeadType === 'MONOBLOCK' ? 'MONOBLOCK' :
+     tool.sprayHeadType === 'MODULAR' || tool.sprayHeadType === 'modular_extension' ? 'MODULAR' :
+     tool.sprayHeadType === 'MATRIX' || tool.sprayHeadType === 'contour_frame' ? 'MATRIX' :
+     tool.sprayHeadType === 'MICRO_DOSING' || tool.sprayHeadType === 'micro_spray' ? 'MICRO_DOSING' :
+     'MONOBLOCK');
 
   const eoatEvaluation = useMemo(() => {
     return evaluateEoatCompatibility(robot, activeEoatSpec || tool, machine, die);
@@ -233,7 +257,10 @@ export const ManufacturingPanel: React.FC = () => {
             <button
               key={m.id}
               id={`machine-preset-btn-${m.id}`}
-              onClick={() => setMachine(m)}
+              onClick={() => {
+                setMachine(m);
+                setDcmClampingForce(m.clampingForceTons);
+              }}
               className={`p-2 rounded-lg border text-left text-xs transition cursor-pointer ${
                 machine.id === m.id
                   ? 'bg-blue-600/20 border-blue-500 text-white shadow-sm'
@@ -244,6 +271,173 @@ export const ManufacturingPanel: React.FC = () => {
               <div className="text-[9.5px] text-slate-400 mt-0.5">{m.tieBarClearanceH}×{m.tieBarClearanceV}mm Daylight</div>
             </button>
           ))}
+        </div>
+
+        {/* DCM Digital Twin Kinematics & Synchronized Cycle State Machine */}
+        <div className="mt-3 bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wide">
+                DCM Digital Twin Kinematics
+              </span>
+            </div>
+            <span className="px-1.5 py-0.5 text-[9px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-800/60 rounded">
+              {currentCyclePhase}
+            </span>
+          </div>
+
+          {/* Interactive Cycle Phase Stepper Pills */}
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                { id: '01_MOLD_CLOSE', label: '1. Close' },
+                { id: '02_INJECTION', label: '2. Inject' },
+                { id: '03_MOLD_OPEN', label: '3. Open' },
+                { id: '04_SPRAY_LUBE', label: '4. Spray (A)' },
+                { id: '05_PART_EXTRACTION', label: '5. Extract (B)' },
+                { id: '06_CYCLE_RESET', label: '6. Reset' }
+              ] as const
+            ).map(p => {
+              const isCurrent = currentCyclePhase === p.id;
+              return (
+                <button
+                  key={p.id}
+                  id={`jump-phase-btn-${p.id}`}
+                  onClick={() => jumpToCyclePhase(p.id)}
+                  className={`py-1 px-1 text-[9.5px] font-semibold rounded border transition cursor-pointer text-center truncate ${
+                    isCurrent
+                      ? 'bg-cyan-500 text-slate-950 font-bold border-cyan-400 shadow-sm shadow-cyan-500/30'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                  }`}
+                  title={`Jump simulation to phase ${p.id}`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Live Phase Progress Bar */}
+          <div>
+            <div className="flex items-center justify-between text-[9.5px] text-slate-400 font-mono mb-1">
+              <span>Phase Progress: {(cyclePhaseProgress * 100).toFixed(0)}%</span>
+              <span className="text-cyan-400">Total: {(totalCycleProgress * 100).toFixed(0)}%</span>
+            </div>
+            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-800">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all duration-75"
+                style={{ width: `${Math.max(2, Math.min(100, cyclePhaseProgress * 100))}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Real-time Kinematic Telemetry Gauges */}
+          <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-900">
+            <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800/80">
+              <div className="text-[9px] text-slate-400">Moving Platen (Z)</div>
+              <div className="text-xs font-mono font-bold text-white flex items-center justify-between">
+                <span>{platenOpenPercent.toFixed(0)}% Open</span>
+                <span className="text-[10px] text-cyan-400">
+                  {((platenOpenPercent / 100) * (cycleConfig.platenOpenDistanceMm || 650)).toFixed(0)}mm
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800/80">
+              <div className="text-[9px] text-slate-400">Cavity Metal Fill</div>
+              <div className="text-xs font-mono font-bold text-white flex items-center justify-between">
+                <span className={injectionFillPercent > 0 ? 'text-amber-400' : 'text-slate-500'}>
+                  {injectionFillPercent.toFixed(0)}% Fill
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {currentCyclePhase === '02_INJECTION' ? 'Solidifying' : injectionFillPercent >= 100 ? 'Solid' : 'Empty'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800/80">
+              <div className="text-[9px] text-slate-400">Ejector Stroke</div>
+              <div className="text-xs font-mono font-bold text-white flex items-center justify-between">
+                <span>{ejectorStrokeMm.toFixed(0)} mm</span>
+                <span className="text-[10px] text-emerald-400">
+                  {ejectorStrokeMm > 0 ? 'Extended' : 'Retracted'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/90 p-1.5 rounded border border-slate-800/80">
+              <div className="text-[9px] text-slate-400">Robots In Daylight</div>
+              <div className="text-xs font-mono font-bold flex items-center justify-between">
+                <span className={isSprayerInDaylight ? 'text-cyan-400' : 'text-slate-600'}>
+                  A:{isSprayerInDaylight ? 'IN' : 'OUT'}
+                </span>
+                <span className={isExtractorInDaylight ? 'text-emerald-400' : 'text-slate-600'}>
+                  B:{isExtractorInDaylight ? 'IN' : 'OUT'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Machine Parameter Sliders */}
+          <div className="space-y-2 pt-1 border-t border-slate-900">
+            {/* Clamping Force Slider */}
+            <div>
+              <div className="flex items-center justify-between text-[9.5px] text-slate-400">
+                <span>Clamping Force</span>
+                <span className="font-mono text-cyan-300 font-bold">{cycleConfig.clampingForceTons} Tons</span>
+              </div>
+              <input
+                type="range"
+                min={250}
+                max={1600}
+                step={50}
+                value={cycleConfig.clampingForceTons}
+                onChange={e => setDcmClampingForce(Number(e.target.value))}
+                className="w-full accent-cyan-400 cursor-pointer h-1 bg-slate-800 rounded"
+              />
+            </div>
+
+            {/* Platen Daylight Open Distance Slider */}
+            <div>
+              <div className="flex items-center justify-between text-[9.5px] text-slate-400">
+                <span>Daylight Open Stroke</span>
+                <span className="font-mono text-cyan-300 font-bold">{cycleConfig.platenOpenDistanceMm} mm</span>
+              </div>
+              <input
+                type="range"
+                min={450}
+                max={1100}
+                step={25}
+                value={cycleConfig.platenOpenDistanceMm}
+                onChange={e => setPlatenOpenDistance(Number(e.target.value))}
+                className="w-full accent-cyan-400 cursor-pointer h-1 bg-slate-800 rounded"
+              />
+            </div>
+
+            {/* Injection Dwell Timer Slider */}
+            <div>
+              <div className="flex items-center justify-between text-[9.5px] text-slate-400">
+                <span>Injection & Solidify Dwell</span>
+                <span className="font-mono text-amber-300 font-bold">
+                  {cycleConfig.injectionDwellTimeSec.toFixed(1)} s
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1.0}
+                max={8.0}
+                step={0.5}
+                value={cycleConfig.injectionDwellTimeSec}
+                onChange={e =>
+                  setCycleConfig({
+                    injectionDwellTimeSec: Number(e.target.value)
+                  })
+                }
+                className="w-full accent-amber-400 cursor-pointer h-1 bg-slate-800 rounded"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -546,6 +740,205 @@ export const ManufacturingPanel: React.FC = () => {
         <p className="text-[10px] text-slate-400 mt-1">
           Select end-of-arm tooling engineered for HPDC platen daylight, tie bar clearance, and cycle time.
         </p>
+
+        {/* Explicit Archetype Dropdown Selector */}
+        <div className="mt-2.5">
+          <label className="text-[10.5px] font-mono text-slate-300 font-semibold mb-1 flex items-center justify-between">
+            <span>EOAT MANIFOLD ARCHETYPE</span>
+            <span className="text-[9px] text-cyan-300 bg-cyan-950/70 px-1.5 py-0.2 rounded border border-cyan-800/50">
+              {currentArchetype}
+            </span>
+          </label>
+          <select
+            id="eoat-manifold-archetype-dropdown"
+            value={currentArchetype}
+            onChange={e => {
+              const chosen = e.target.value as SprayHeadType;
+              setSprayHeadPreset(chosen);
+            }}
+            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-200 font-semibold focus:border-cyan-500 focus:outline-none"
+          >
+            <option value="MONOBLOCK">MONOBLOCK (Monoblock Billet Manifold)</option>
+            <option value="MODULAR">MODULAR (Modular Block - Dual Circuit)</option>
+            <option value="MATRIX">MATRIX (Matrix Nozzle Array)</option>
+            <option value="MICRO_DOSING">MICRO_DOSING (Micro-Dosing MQL System)</option>
+          </select>
+        </div>
+
+        {/* Live Manifold Parameter Adjusters (Nozzle Count, Air/Lube Pressure, Spray Angle) */}
+        <div className="mt-2.5 p-2.5 bg-slate-950/80 border border-slate-800 rounded-lg space-y-2.5">
+          <div className="text-[10px] font-bold text-slate-300 font-mono flex items-center justify-between">
+            <span className="flex items-center gap-1">
+              <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
+              <span>MANIFOLD REAL-TIME PARAMETERS</span>
+            </span>
+            <span className="text-[9px] text-slate-400 font-mono">{tool.manifoldWidthMm}mm W • {tool.weightKg}kg</span>
+          </div>
+
+          {/* Active Nozzle Count */}
+          <div>
+            <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+              <span className="flex items-center gap-1">
+                <Droplet className="w-3 h-3 text-blue-400" />
+                Active Nozzle Count
+              </span>
+              <span className="text-cyan-400 font-bold">{tool.nozzles?.length || tool.nozzleCount || 8} Nozzles</span>
+            </div>
+            <input
+              id="panel-nozzle-count-slider"
+              type="range"
+              min={2}
+              max={32}
+              step={2}
+              value={tool.nozzles?.length || tool.nozzleCount || 8}
+              onChange={e => {
+                const count = Number(e.target.value);
+                const currentNozzles = tool.nozzles || [];
+                let nextNozzles: SprayNozzleConfig[] = [];
+                if (count <= currentNozzles.length) {
+                  nextNozzles = currentNozzles.slice(0, count);
+                } else {
+                  nextNozzles = [...currentNozzles];
+                  const diff = count - currentNozzles.length;
+                  for (let i = 0; i < diff; i++) {
+                    const template = currentNozzles[i % currentNozzles.length] || {
+                      id: `nz-extra-${i}`,
+                      name: `Nozzle ${nextNozzles.length + 1}`,
+                      offsetMm: [((i % 4) - 1.5) * 60, ((Math.floor(i / 4) % 2) - 0.5) * 40, i % 2 === 0 ? -25 : 25] as [number, number, number],
+                      directionVector: [0, 0, i % 2 === 0 ? -1 : 1] as [number, number, number],
+                      sprayAngleDeg: 65,
+                      type: 'combined' as const,
+                      flowRatio: 1.0,
+                      sprayWidthMm: 180
+                    };
+                    nextNozzles.push({
+                      ...template,
+                      id: `nz-dyn-${Date.now()}-${i}`,
+                      name: `Nozzle ${nextNozzles.length + 1}`,
+                      offsetMm: [
+                        template.offsetMm[0] + (i % 2 === 0 ? 12 : -12),
+                        template.offsetMm[1],
+                        template.offsetMm[2]
+                      ]
+                    });
+                  }
+                }
+                setTool({
+                  ...tool,
+                  nozzleCount: count,
+                  nozzles: nextNozzles
+                });
+              }}
+              className="w-full accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded mt-1"
+            />
+          </div>
+
+          {/* Air Pressure */}
+          <div>
+            <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+              <span className="flex items-center gap-1">
+                <Wind className="w-3 h-3 text-sky-400" />
+                Air Pressure (Atomization)
+              </span>
+              <span className="text-sky-300 font-bold">{(tool.fluidAirSupply?.airPressureBar ?? 5.5).toFixed(1)} bar</span>
+            </div>
+            <input
+              id="panel-air-pressure-slider"
+              type="range"
+              min={2.0}
+              max={8.0}
+              step={0.1}
+              value={tool.fluidAirSupply?.airPressureBar ?? 5.5}
+              onChange={e => {
+                const airBar = Number(e.target.value);
+                setTool({
+                  ...tool,
+                  fluidAirSupply: {
+                    lubePressure: tool.fluidAirSupply?.lubePressure || '4.0 bar',
+                    airPressure: `${airBar.toFixed(1)} bar`,
+                    lubeFlowRate: tool.fluidAirSupply?.lubeFlowRate || '45 mL/sec',
+                    airConsumptionNlPerMin: tool.fluidAirSupply?.airConsumptionNlPerMin || 1400,
+                    connectionInterfaces: tool.fluidAirSupply?.connectionInterfaces || 'G 3/8" / G 1/2"',
+                    lubricantPressureBar: tool.fluidAirSupply?.lubricantPressureBar ?? 4.0,
+                    airPressureBar: airBar,
+                    antiDripSuckBack: tool.fluidAirSupply?.antiDripSuckBack,
+                    airKnifeIntegrated: tool.fluidAirSupply?.airKnifeIntegrated
+                  }
+                });
+              }}
+              className="w-full accent-sky-400 cursor-pointer h-1.5 bg-slate-800 rounded mt-1"
+            />
+          </div>
+
+          {/* Lubricant Pressure */}
+          <div>
+            <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+              <span className="flex items-center gap-1">
+                <Gauge className="w-3 h-3 text-emerald-400" />
+                Lubricant Pressure (Pump)
+              </span>
+              <span className="text-emerald-400 font-bold">{(tool.fluidAirSupply?.lubricantPressureBar ?? 4.0).toFixed(1)} bar</span>
+            </div>
+            <input
+              id="panel-lube-pressure-slider"
+              type="range"
+              min={1.0}
+              max={6.0}
+              step={0.1}
+              value={tool.fluidAirSupply?.lubricantPressureBar ?? 4.0}
+              onChange={e => {
+                const lubeBar = Number(e.target.value);
+                setTool({
+                  ...tool,
+                  fluidAirSupply: {
+                    lubePressure: `${lubeBar.toFixed(1)} bar`,
+                    airPressure: tool.fluidAirSupply?.airPressure || '5.5 bar',
+                    lubeFlowRate: tool.fluidAirSupply?.lubeFlowRate || '45 mL/sec',
+                    airConsumptionNlPerMin: tool.fluidAirSupply?.airConsumptionNlPerMin || 1400,
+                    connectionInterfaces: tool.fluidAirSupply?.connectionInterfaces || 'G 3/8" / G 1/2"',
+                    lubricantPressureBar: lubeBar,
+                    airPressureBar: tool.fluidAirSupply?.airPressureBar ?? 5.5,
+                    antiDripSuckBack: tool.fluidAirSupply?.antiDripSuckBack,
+                    airKnifeIntegrated: tool.fluidAirSupply?.airKnifeIntegrated
+                  }
+                });
+              }}
+              className="w-full accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded mt-1"
+            />
+          </div>
+
+          {/* Spray Angle */}
+          <div>
+            <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+              <span className="flex items-center gap-1">
+                <Compass className="w-3 h-3 text-amber-400" />
+                Nozzle Spray Fan Angle
+              </span>
+              <span className="text-amber-300 font-bold">{tool.nozzles?.[0]?.sprayAngleDeg ?? 65}°</span>
+            </div>
+            <input
+              id="panel-spray-angle-slider"
+              type="range"
+              min={30}
+              max={120}
+              step={5}
+              value={tool.nozzles?.[0]?.sprayAngleDeg ?? 65}
+              onChange={e => {
+                const angle = Number(e.target.value);
+                const currentNozzles = tool.nozzles || [];
+                const updatedNozzles = currentNozzles.map(nz => ({
+                  ...nz,
+                  sprayAngleDeg: angle
+                }));
+                setTool({
+                  ...tool,
+                  nozzles: updatedNozzles
+                });
+              }}
+              className="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-800 rounded mt-1"
+            />
+          </div>
+        </div>
 
         {/* Archetype Filter Tabs */}
         <div className="flex items-center gap-1 mt-2.5 overflow-x-auto pb-1 scrollbar-none">

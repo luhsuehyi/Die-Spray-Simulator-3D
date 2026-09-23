@@ -1,5 +1,5 @@
 import { DieModel } from '../types/die';
-import { RobotModelSpec, ToolCenterPoint, SprayHeadType, SprayNozzleConfig, HotSpotDefinition, EoatType, EOATSpec } from '../types/robot';
+import { RobotModelSpec, ToolCenterPoint, SprayHeadType, SprayNozzleConfig, HotSpotDefinition, EoatType, EOATSpec, ValveControlConfig, FluidAirSupplyConfig } from '../types/robot';
 import { DieCastingMachine } from '../types/machine';
 import { Waypoint } from '../types/path';
 
@@ -338,6 +338,26 @@ export const ROBOT_PRESETS: RobotModelSpec[] = [
     dhParams: []
   },
   {
+    id: 'fanuc-r2000id',
+    name: 'FANUC R-2000iD/210F (Foundry Spec)',
+    manufacturer: 'FANUC',
+    payloadKg: 210,
+    reachMm: 2605,
+    repeatabilityMm: 0.05,
+    degreesOfFreedom: 6,
+    baseOffset: [0, 1450, -750],
+    mountOrientation: 'top',
+    jointLimits: [
+      { minDeg: -180, maxDeg: 180, maxVelocityDegPerSec: 130 },
+      { minDeg: -60, maxDeg: 75, maxVelocityDegPerSec: 130 },
+      { minDeg: -180, maxDeg: 230, maxVelocityDegPerSec: 130 },
+      { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 210 },
+      { minDeg: -125, maxDeg: 125, maxVelocityDegPerSec: 210 },
+      { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 300 }
+    ],
+    dhParams: []
+  },
+  {
     id: 'fanuc-m710ic-50',
     name: 'FANUC M-710iC/50 (Foundry Spec)',
     manufacturer: 'FANUC',
@@ -354,6 +374,26 @@ export const ROBOT_PRESETS: RobotModelSpec[] = [
       { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 250 },
       { minDeg: -125, maxDeg: 125, maxVelocityDegPerSec: 250 },
       { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 355 }
+    ],
+    dhParams: []
+  },
+  {
+    id: 'abb-irb-6700',
+    name: 'ABB IRB 6700-205/2.80 (Foundry Plus 2)',
+    manufacturer: 'ABB',
+    payloadKg: 205,
+    reachMm: 2800,
+    repeatabilityMm: 0.05,
+    degreesOfFreedom: 6,
+    baseOffset: [-1100, 150, 0],
+    mountOrientation: 'side',
+    jointLimits: [
+      { minDeg: -170, maxDeg: 170, maxVelocityDegPerSec: 110 },
+      { minDeg: -65, maxDeg: 85, maxVelocityDegPerSec: 110 },
+      { minDeg: -180, maxDeg: 70, maxVelocityDegPerSec: 110 },
+      { minDeg: -300, maxDeg: 300, maxVelocityDegPerSec: 190 },
+      { minDeg: -130, maxDeg: 130, maxVelocityDegPerSec: 190 },
+      { minDeg: -360, maxDeg: 360, maxVelocityDegPerSec: 235 }
     ],
     dhParams: []
   },
@@ -438,17 +478,8 @@ export interface SprayHeadPreset {
   maintenanceComplexity?: 'LOW' | 'MEDIUM' | 'HIGH';
   maintenanceNotes?: string;
   nozzleAdjustabilityDetails?: string;
-  fluidAirSupply?: {
-    lubePressure: string;
-    airPressure: string;
-    lubeFlowRate: string;
-    airConsumptionNlPerMin: number;
-    connectionInterfaces: string;
-    lubricantPressureBar?: number;
-    airPressureBar?: number;
-    antiDripSuckBack?: boolean;
-    airKnifeIntegrated?: boolean;
-  };
+  fluidAirSupply?: FluidAirSupplyConfig;
+  valveControls?: ValveControlConfig;
   microSpraySettings?: {
     fineSpray: boolean;
     sprayWidthMm: number;
@@ -498,7 +529,21 @@ export const EOAT_PRESETS: EOATSpec[] = [
       airPressure: '4.5 - 7.0 bar (Dry Shop Air for Atomization & Air Blow)',
       lubeFlowRate: '35 - 75 mL/sec total manifold flow',
       airConsumptionNlPerMin: 1450,
-      connectionInterfaces: '1x G 3/8" Lube In, 1x G 1/2" Atomizing Air, 1x G 1/2" Main Blast Air'
+      connectionInterfaces: '1x G 3/8" Lube In, 1x G 1/2" Atomizing Air, 1x G 1/2" Main Blast Air',
+      lubricantPressureBar: 4.5,
+      airPressureBar: 5.5,
+      antiDripSuckBack: false,
+      airKnifeIntegrated: true
+    },
+    valveControls: {
+      valveType: 'pneumatic_pinch',
+      antiDripSuckBack: false,
+      individualNozzleControl: false,
+      independentAirLubeSequencing: true,
+      zones: [
+        { id: 'zone-fixed', name: 'Fixed Die Face Zone', nozzleIds: ['mb-f1', 'mb-f2', 'mb-f3', 'mb-f4', 'mb-f5'], targetFace: 'FIXED_DIE' },
+        { id: 'zone-moving', name: 'Moving Die Face Zone', nozzleIds: ['mb-m1', 'mb-m2', 'mb-m3', 'mb-m4', 'mb-m5'], targetFace: 'MOVABLE_DIE' }
+      ]
     },
     cycleTimeAdvantageSec: 2.8,
     cycleTimeNote: '2.5 - 3.2s faster per cycle due to simultaneous dual-face spraying and higher wrist acceleration with rigid monoblock.',
@@ -566,7 +611,21 @@ export const EOAT_PRESETS: EOATSpec[] = [
       airPressure: '4.0 - 6.5 bar (Main Blast & Swivel Assist Air)',
       lubeFlowRate: '45 - 90 mL/sec total manifold flow',
       airConsumptionNlPerMin: 1900,
-      connectionInterfaces: 'Central distribution block with 8mm OD polyurethane push-in pneumatic/fluid lines'
+      connectionInterfaces: 'Central distribution block with 8mm OD polyurethane push-in pneumatic/fluid lines',
+      lubricantPressureBar: 4.0,
+      airPressureBar: 5.0,
+      antiDripSuckBack: false,
+      airKnifeIntegrated: false
+    },
+    valveControls: {
+      valveType: 'pneumatic_pinch',
+      antiDripSuckBack: false,
+      individualNozzleControl: true,
+      independentAirLubeSequencing: true,
+      zones: [
+        { id: 'zone-lance-fixed', name: 'Articulated Lances (Fixed)', nozzleIds: ['mod-1', 'mod-2', 'mod-3', 'mod-4', 'mod-5', 'mod-6', 'mod-7'], targetFace: 'FIXED_DIE' },
+        { id: 'zone-lance-movable', name: 'Articulated Lances (Movable)', nozzleIds: ['mod-8', 'mod-9', 'mod-10', 'mod-11', 'mod-12', 'mod-13', 'mod-14'], targetFace: 'MOVABLE_DIE' }
+      ]
     },
     cycleTimeAdvantageSec: 1.2,
     cycleTimeNote: 'Enables complex multi-cavity reach without extra robot re-orientations; ~1.2s savings on deep die designs.',
@@ -638,7 +697,21 @@ export const EOAT_PRESETS: EOATSpec[] = [
       airPressure: '5.0 - 8.0 bar (Dedicated High-Volume Air Reservoir Required)',
       lubeFlowRate: '80 - 180 mL/sec total matrix flow',
       airConsumptionNlPerMin: 3800,
-      connectionInterfaces: 'Dual G 3/4" high-flow braided stainless umbilicals with quick-disconnect coupling'
+      connectionInterfaces: 'Dual G 3/4" high-flow braided stainless umbilicals with quick-disconnect coupling',
+      lubricantPressureBar: 5.0,
+      airPressureBar: 6.5,
+      antiDripSuckBack: false,
+      airKnifeIntegrated: true
+    },
+    valveControls: {
+      valveType: 'proportional_needle',
+      antiDripSuckBack: false,
+      individualNozzleControl: true,
+      independentAirLubeSequencing: true,
+      zones: [
+        { id: 'zone-matrix-fixed', name: 'Planar Grid Fixed Array', nozzleIds: [], targetFace: 'FIXED_DIE' },
+        { id: 'zone-matrix-moving', name: 'Planar Grid Movable Array', nozzleIds: [], targetFace: 'MOVABLE_DIE' }
+      ]
     },
     cycleTimeAdvantageSec: 5.4,
     cycleTimeNote: 'Up to 5.5s cycle time reduction on large structural dies. Covers entire die envelope in 1-2 rapid sweeps instead of raster passes.',
@@ -722,7 +795,22 @@ export const EOAT_PRESETS: EOATSpec[] = [
       airPressure: '4.0 - 6.5 bar (Precision Low-Flow Micro-Atomization)',
       lubeFlowRate: '4 - 18 mL/sec (Sub-milliliter pulsed dosing)',
       airConsumptionNlPerMin: 620,
-      connectionInterfaces: 'Micro-bore 4mm stainless steel fluid tubing and 24V DC M12 electrical solenoid bus'
+      connectionInterfaces: 'Micro-bore 4mm stainless steel fluid tubing and 24V DC M12 electrical solenoid bus',
+      lubricantPressureBar: 10.0,
+      airPressureBar: 5.0,
+      antiDripSuckBack: true,
+      airKnifeIntegrated: false
+    },
+    valveControls: {
+      valveType: 'solenoid_pwm',
+      responseFrequencyHz: 50,
+      antiDripSuckBack: true,
+      individualNozzleControl: true,
+      independentAirLubeSequencing: true,
+      zones: [
+        { id: 'zone-mql-fixed', name: 'Micro-Pulse Fixed Bank', nozzleIds: ['mql-f1', 'mql-f2', 'mql-f3', 'mql-f4'], targetFace: 'FIXED_DIE' },
+        { id: 'zone-mql-moving', name: 'Micro-Pulse Movable Bank', nozzleIds: ['mql-m1', 'mql-m2', 'mql-m3', 'mql-m4'], targetFace: 'MOVABLE_DIE' }
+      ]
     },
     cycleTimeAdvantageSec: 3.6,
     cycleTimeNote: 'Saves 3.5 - 4.2s per cycle because dry time is near zero (no water puddle evaporation needed). Parting line remains dry.',
@@ -767,7 +855,16 @@ export const SPRAY_HEAD_PRESETS: SprayHeadPreset[] = [
     weightKg: EOAT_PRESETS[0].weightKg,
     defaultSprayDistanceMm: EOAT_PRESETS[0].defaultSprayDistanceMm,
     nozzles: EOAT_PRESETS[0].nozzles,
-    eoatSpec: EOAT_PRESETS[0]
+    eoatSpec: EOAT_PRESETS[0],
+    cycleTimeAdvantageSec: EOAT_PRESETS[0].cycleTimeAdvantageSec,
+    cycleTimeNote: EOAT_PRESETS[0].cycleTimeNote,
+    costTier: EOAT_PRESETS[0].costTier,
+    costTierLabel: EOAT_PRESETS[0].costTierLabel,
+    maintenanceComplexity: EOAT_PRESETS[0].maintenanceComplexity,
+    maintenanceNotes: EOAT_PRESETS[0].maintenanceNotes,
+    nozzleAdjustabilityDetails: EOAT_PRESETS[0].nozzleAdjustabilityDetails,
+    fluidAirSupply: EOAT_PRESETS[0].fluidAirSupply,
+    valveControls: EOAT_PRESETS[0].valveControls
   },
   {
     id: 'MODULAR',
@@ -780,7 +877,16 @@ export const SPRAY_HEAD_PRESETS: SprayHeadPreset[] = [
     weightKg: EOAT_PRESETS[1].weightKg,
     defaultSprayDistanceMm: EOAT_PRESETS[1].defaultSprayDistanceMm,
     nozzles: EOAT_PRESETS[1].nozzles,
-    eoatSpec: EOAT_PRESETS[1]
+    eoatSpec: EOAT_PRESETS[1],
+    cycleTimeAdvantageSec: EOAT_PRESETS[1].cycleTimeAdvantageSec,
+    cycleTimeNote: EOAT_PRESETS[1].cycleTimeNote,
+    costTier: EOAT_PRESETS[1].costTier,
+    costTierLabel: EOAT_PRESETS[1].costTierLabel,
+    maintenanceComplexity: EOAT_PRESETS[1].maintenanceComplexity,
+    maintenanceNotes: EOAT_PRESETS[1].maintenanceNotes,
+    nozzleAdjustabilityDetails: EOAT_PRESETS[1].nozzleAdjustabilityDetails,
+    fluidAirSupply: EOAT_PRESETS[1].fluidAirSupply,
+    valveControls: EOAT_PRESETS[1].valveControls
   },
   {
     id: 'MATRIX',
@@ -793,7 +899,16 @@ export const SPRAY_HEAD_PRESETS: SprayHeadPreset[] = [
     weightKg: EOAT_PRESETS[2].weightKg,
     defaultSprayDistanceMm: EOAT_PRESETS[2].defaultSprayDistanceMm,
     nozzles: EOAT_PRESETS[2].nozzles,
-    eoatSpec: EOAT_PRESETS[2]
+    eoatSpec: EOAT_PRESETS[2],
+    cycleTimeAdvantageSec: EOAT_PRESETS[2].cycleTimeAdvantageSec,
+    cycleTimeNote: EOAT_PRESETS[2].cycleTimeNote,
+    costTier: EOAT_PRESETS[2].costTier,
+    costTierLabel: EOAT_PRESETS[2].costTierLabel,
+    maintenanceComplexity: EOAT_PRESETS[2].maintenanceComplexity,
+    maintenanceNotes: EOAT_PRESETS[2].maintenanceNotes,
+    nozzleAdjustabilityDetails: EOAT_PRESETS[2].nozzleAdjustabilityDetails,
+    fluidAirSupply: EOAT_PRESETS[2].fluidAirSupply,
+    valveControls: EOAT_PRESETS[2].valveControls
   },
   {
     id: 'MICRO_DOSING',
@@ -807,6 +922,15 @@ export const SPRAY_HEAD_PRESETS: SprayHeadPreset[] = [
     defaultSprayDistanceMm: EOAT_PRESETS[3].defaultSprayDistanceMm,
     nozzles: EOAT_PRESETS[3].nozzles,
     eoatSpec: EOAT_PRESETS[3],
+    cycleTimeAdvantageSec: EOAT_PRESETS[3].cycleTimeAdvantageSec,
+    cycleTimeNote: EOAT_PRESETS[3].cycleTimeNote,
+    costTier: EOAT_PRESETS[3].costTier,
+    costTierLabel: EOAT_PRESETS[3].costTierLabel,
+    maintenanceComplexity: EOAT_PRESETS[3].maintenanceComplexity,
+    maintenanceNotes: EOAT_PRESETS[3].maintenanceNotes,
+    nozzleAdjustabilityDetails: EOAT_PRESETS[3].nozzleAdjustabilityDetails,
+    fluidAirSupply: EOAT_PRESETS[3].fluidAirSupply,
+    valveControls: EOAT_PRESETS[3].valveControls,
     microSpraySettings: {
       fineSpray: true,
       sprayWidthMm: 110,

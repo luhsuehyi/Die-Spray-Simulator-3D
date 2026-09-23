@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { DieCastingMachine } from '../../types/machine';
 import { DieModel } from '../../types/die';
-import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig, EoatType } from '../../types/robot';
+import { RobotModelSpec, ToolCenterPoint, FactoryEquipmentConfig, RobotMountType, TopMountStyle, RobotMountConfig, EoatType, SprayNozzleConfig, CellCyclePhase } from '../../types/robot';
 import { buildRobotKinematicModel } from '../../utils/kinematics/robotModelBuilder';
 import { Matrix4Tuple } from '../../types/kinematics';
 import { loadGp50CadParts, attachGp50CadParts } from '../../utils/gp50CadLoader';
@@ -34,20 +34,78 @@ export const MAT = {
   fanucYellow: new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.55, roughness: 0.38 }),
   yaskawaBlue: new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.68, roughness: 0.32 }),
   abbWhite: new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.65, roughness: 0.28 }),
-  kukaOrange: new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.62, roughness: 0.35 })
+  kukaOrange: new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.62, roughness: 0.35 }),
+  moltenMetal: new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff3300, emissiveIntensity: 2.2, metalness: 0.3, roughness: 0.25 }),
+  ejectorPinSteel: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.12 }),
+  gripperBody: new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.35 }),
+  gripperPneumatic: new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.45, roughness: 0.4 }),
+  gripperJaw: new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.88, roughness: 0.22 }),
+  gripperSensorGreen: new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 1.0, roughness: 0.2 })
 };
 
+export interface DcmKinematicsHandle {
+  movingAssemblyGroup: THREE.Group;
+  ejectorPinsGroup: THREE.Group;
+  plungerRodMesh: THREE.Mesh;
+  moltenCavityFillMesh: THREE.Mesh;
+  moltenCavityMaterial: THREE.MeshStandardMaterial;
+  quenchPartMesh?: THREE.Mesh;
+  closedMovPlatenZ: number;
+  fixedPlatenZ: number;
+  depth: number;
+  updateKinematics: (
+    platenOpenPct: number,
+    platenOpenDistMm: number,
+    ejectorMm: number,
+    injectionFillPct: number,
+    currentPhase: CellCyclePhase
+  ) => void;
+  dispose: () => void;
+}
+
+export interface ExtractorRobotRig {
+  group: THREE.Group;
+  gripperFlangeGroup: THREE.Group;
+  gripperJaws: THREE.Mesh[];
+  partMeshHolder: THREE.Group;
+  partMesh: THREE.Mesh;
+  updateExtractionKinematics: (
+    phase: CellCyclePhase,
+    progress: number,
+    isPartGripped: boolean,
+    targetCavityWorldPos?: THREE.Vector3,
+    quenchDropWorldPos?: THREE.Vector3
+  ) => void;
+  dispose: () => void;
+}
+
 /**
- * Builds the realistic Toyo BD-V7EX Die Casting Machine
+ * Builds the realistic Toyo BD-V7EX Die Casting Machine (Backwards compatible helper)
  */
 export function buildToyoMachine(
   group: THREE.Group,
   machine: DieCastingMachine,
   die: DieModel
 ) {
-  // Clear group
-  while (group.children.length > 0) {
-    group.remove(group.children[0]);
+  const movGroup = new THREE.Group();
+  group.add(movGroup);
+  buildDcmDigitalTwin(group, movGroup, machine, die);
+}
+
+/**
+ * Builds the Full Digital Twin DCM with Kinematics Handle
+ */
+export function buildDcmDigitalTwin(
+  machineGroup: THREE.Group,
+  movingAssemblyGroup: THREE.Group,
+  machine: DieCastingMachine,
+  die: DieModel
+): DcmKinematicsHandle {
+  while (machineGroup.children.length > 0) {
+    machineGroup.remove(machineGroup.children[0]);
+  }
+  while (movingAssemblyGroup.children.length > 0) {
+    movingAssemblyGroup.remove(movingAssemblyGroup.children[0]);
   }
 
   const platenW = machine.platenWidth;
@@ -55,11 +113,15 @@ export function buildToyoMachine(
   const platenThick = Math.max(180, Math.min(320, platenW * 0.18));
   const movPlatenW = machine.movablePlatenWidth || platenW;
   const movPlatenH = machine.movablePlatenHeight || platenH;
+  const depth = die.dimensions.depth;
 
-  const fixedPlatenZ = die.fixedDieOffsetZ - platenThick / 2 - die.dimensions.depth / 2;
-  const movPlatenZ = die.movableDieOffsetZ + platenThick / 2 + die.dimensions.depth / 2;
+  const fixedDieZ = die.fixedDieOffsetZ;
+  const fixedPlatenZ = fixedDieZ - depth / 2 - platenThick / 2;
+  const closedMovPlatenZ = fixedDieZ + depth / 2 + platenThick / 2;
+  const shotSleeveY = machine.injectionAxisOffsetY;
+  const shotSleeveLen = (machine.plungerStroke || 500) + 350;
 
-  // 1. STATIONARY PLATEN (Fixed Platen)
+  // 1. STATIONARY FIXED PLATEN
   const fixedPlaten = new THREE.Mesh(
     new THREE.BoxGeometry(platenW, platenH, platenThick),
     MAT.toyoGrey
@@ -67,7 +129,7 @@ export function buildToyoMachine(
   fixedPlaten.position.set(0, 0, fixedPlatenZ);
   fixedPlaten.castShadow = true;
   fixedPlaten.receiveShadow = true;
-  group.add(fixedPlaten);
+  machineGroup.add(fixedPlaten);
 
   // Platen Top Machined Robot Mounting Shelf
   const topShelf = new THREE.Mesh(
@@ -76,7 +138,7 @@ export function buildToyoMachine(
   );
   topShelf.position.set(0, platenH / 2 + 22, fixedPlatenZ);
   topShelf.castShadow = true;
-  group.add(topShelf);
+  machineGroup.add(topShelf);
 
   // Cast Pockets on Fixed Platen
   [-1, 1].forEach(side => {
@@ -85,64 +147,62 @@ export function buildToyoMachine(
       MAT.castRecess
     );
     pocket.position.set(side * (platenW / 2 - 8), platenH * 0.22, fixedPlatenZ);
-    group.add(pocket);
+    machineGroup.add(pocket);
 
     const pocketB = new THREE.Mesh(
       new THREE.BoxGeometry(18, platenH * 0.28, platenThick * 0.6),
       MAT.castRecess
     );
     pocketB.position.set(side * (platenW / 2 - 8), -platenH * 0.22, fixedPlatenZ);
-    group.add(pocketB);
+    machineGroup.add(pocketB);
   });
 
   // Center Shot Sleeve Bore (Pour hole)
   const shotHole = new THREE.Mesh(
-    new THREE.CylinderGeometry(machine.standardPlungerDia ? machine.standardPlungerDia / 2 + 15 : 60, machine.standardPlungerDia ? machine.standardPlungerDia / 2 + 15 : 60, platenThick + 4, 24),
+    new THREE.CylinderGeometry(
+      machine.standardPlungerDia ? machine.standardPlungerDia / 2 + 15 : 60,
+      machine.standardPlungerDia ? machine.standardPlungerDia / 2 + 15 : 60,
+      platenThick + 8,
+      24
+    ),
     MAT.castRecess
   );
   shotHole.rotation.x = Math.PI / 2;
-  shotHole.position.set(0, machine.injectionAxisOffsetY, fixedPlatenZ);
-  group.add(shotHole);
+  shotHole.position.set(0, shotSleeveY, fixedPlatenZ);
+  machineGroup.add(shotHole);
 
-  // 2. MOVABLE PLATEN
-  const movPlaten = new THREE.Mesh(
-    new THREE.BoxGeometry(movPlatenW, movPlatenH, platenThick),
-    MAT.toyoGrey
-  );
-  movPlaten.position.set(0, 0, movPlatenZ);
-  movPlaten.castShadow = true;
-  movPlaten.receiveShadow = true;
-  group.add(movPlaten);
-
-  // Movable Platen Top Shelf Deck
-  const movShelf = new THREE.Mesh(
-    new THREE.BoxGeometry(movPlatenW * 0.78, 45, platenThick * 1.5),
-    MAT.platenSteel
-  );
-  movShelf.position.set(0, movPlatenH / 2 + 22, movPlatenZ);
-  movShelf.castShadow = true;
-  group.add(movShelf);
-
-  // Bronze Guide Shoes riding on bed ways
-  [-1, 1].forEach(side => {
-    const shoe = new THREE.Mesh(
-      new THREE.BoxGeometry(110, 45, platenThick * 1.2),
-      MAT.brass
-    );
-    shoe.position.set(side * (movPlatenW * 0.38), -movPlatenH / 2 - 20, movPlatenZ);
-    group.add(shoe);
-  });
-
-  // Ejector Hydraulic Cylinder on Back of Movable Platen
-  const ejectorCyl = new THREE.Mesh(
-    new THREE.CylinderGeometry(85, 85, machine.ejectorStroke + 180, 24),
+  // Shot Sleeve Cylinder
+  const shotSleeve = new THREE.Mesh(
+    new THREE.CylinderGeometry(65, 70, shotSleeveLen, 24),
     MAT.jointDark
   );
-  ejectorCyl.rotation.x = Math.PI / 2;
-  ejectorCyl.position.set(0, 0, movPlatenZ + platenThick / 2 + (machine.ejectorStroke + 180) / 2);
-  group.add(ejectorCyl);
+  shotSleeve.rotation.x = Math.PI / 2;
+  shotSleeve.position.set(0, shotSleeveY, fixedPlatenZ - shotSleeveLen / 2);
+  machineGroup.add(shotSleeve);
 
-  // 3. TIE-BARS (4 Chrome Precision Columns)
+  // Shot Sleeve Pouring Port (Molten metal ladle pour port)
+  const pourPort = new THREE.Mesh(
+    new THREE.CylinderGeometry(40, 40, 45, 16),
+    MAT.platenSteel
+  );
+  pourPort.position.set(0, shotSleeveY + 65, fixedPlatenZ - 280);
+  machineGroup.add(pourPort);
+
+  // Injection Plunger Rod (advances during 02_INJECTION)
+  const plungerRodMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(
+      machine.standardPlungerDia ? machine.standardPlungerDia / 2 : 45,
+      machine.standardPlungerDia ? machine.standardPlungerDia / 2 : 45,
+      shotSleeveLen * 0.65,
+      20
+    ),
+    MAT.chromeTieBar
+  );
+  plungerRodMesh.rotation.x = Math.PI / 2;
+  plungerRodMesh.position.set(0, shotSleeveY, fixedPlatenZ - shotSleeveLen + 150);
+  machineGroup.add(plungerRodMesh);
+
+  // 4 Chrome Tie-Bars spanning the machine
   const halfH = machine.tieBarClearanceH / 2;
   const halfV = machine.tieBarClearanceV / 2;
   const tbRadius = machine.tieBarDiameter / 2;
@@ -163,35 +223,35 @@ export function buildToyoMachine(
 
   corners.forEach(([tx, ty]) => {
     const tb = new THREE.Mesh(tbGeo, MAT.chromeTieBar);
-    tb.position.set(tx, ty, (fixedPlatenZ + movPlatenZ) / 2 + 200);
+    tb.position.set(tx, ty, fixedPlatenZ + tbTotalLength * 0.4);
     tb.castShadow = true;
-    group.add(tb);
+    machineGroup.add(tb);
 
-    // Front clamping tie-bar nut on Fixed Platen
+    // Front Clamping Tie-Bar Nut
     const nutF = new THREE.Mesh(
       new THREE.CylinderGeometry(tbRadius * 1.5, tbRadius * 1.5, 75, 6),
       MAT.jointDark
     );
     nutF.rotation.x = Math.PI / 2;
     nutF.position.set(tx, ty, fixedPlatenZ - platenThick / 2 - 38);
-    group.add(nutF);
+    machineGroup.add(nutF);
 
-    // Rear clamping tie-bar nut on Rear Platen / Movable stroke end
+    // Rear Clamping Nut
     const nutR = new THREE.Mesh(
       new THREE.CylinderGeometry(tbRadius * 1.5, tbRadius * 1.5, 75, 6),
       MAT.jointDark
     );
     nutR.rotation.x = Math.PI / 2;
-    nutR.position.set(tx, ty, fixedPlatenZ + tbTotalLength * 0.6);
-    group.add(nutR);
+    nutR.position.set(tx, ty, fixedPlatenZ + tbTotalLength * 0.85);
+    machineGroup.add(nutR);
   });
 
-  // 4. TOYO MACHINE BASE BED & SLIDE RAILS
+  // Machine Base Bed & Slide Rails
   const bedWidth = platenW * 0.95;
   const bedHeight = 220;
   const bedLength = Math.max(3800, (machine.machineLengthMm || 6500) * 0.7);
   const bedY = -platenH / 2 - bedHeight / 2 - 10;
-  const bedZ = (fixedPlatenZ + movPlatenZ) / 2 + 200;
+  const bedZ = fixedPlatenZ + bedLength * 0.4;
 
   const bed = new THREE.Mesh(
     new THREE.BoxGeometry(bedWidth, bedHeight, bedLength),
@@ -199,46 +259,27 @@ export function buildToyoMachine(
   );
   bed.position.set(0, bedY, bedZ);
   bed.receiveShadow = true;
-  group.add(bed);
+  machineGroup.add(bed);
 
-  // Machine Bed Hardened Steel Way Rails
+  // Machine Bed Rails
   [-1, 1].forEach(side => {
     const rail = new THREE.Mesh(
       new THREE.BoxGeometry(90, 25, bedLength * 0.95),
       MAT.platenSteel
     );
     rail.position.set(side * (bedWidth * 0.38), bedY + bedHeight / 2 + 12, bedZ);
-    group.add(rail);
+    machineGroup.add(rail);
   });
 
-  // Die Daylight Scrap / Slug Chute (Under parting line)
+  // Scrap Chute
   const chute = new THREE.Mesh(
     new THREE.BoxGeometry(bedWidth * 0.6, 60, 600),
     MAT.castRecess
   );
-  chute.position.set(0, bedY + bedHeight / 2 - 10, (die.fixedDieOffsetZ + die.movableDieOffsetZ) / 2);
-  group.add(chute);
+  chute.position.set(0, bedY + bedHeight / 2 - 10, fixedDieZ + 350);
+  machineGroup.add(chute);
 
-  // 5. INJECTION SYSTEM (Shot Sleeve, Injection Carriage, & Nitrogen Accumulator Bottles)
-  const shotSleeveY = machine.injectionAxisOffsetY;
-  const shotSleeveLen = (machine.plungerStroke || 500) + 350;
-  const shotSleeve = new THREE.Mesh(
-    new THREE.CylinderGeometry(65, 70, shotSleeveLen, 24),
-    MAT.jointDark
-  );
-  shotSleeve.rotation.x = Math.PI / 2;
-  shotSleeve.position.set(0, shotSleeveY, fixedPlatenZ - shotSleeveLen / 2);
-  group.add(shotSleeve);
-
-  // Shot Sleeve Pouring Port (Opening for Molten Metal Spoon / Launder)
-  const pourPort = new THREE.Mesh(
-    new THREE.CylinderGeometry(40, 40, 45, 16),
-    MAT.platenSteel
-  );
-  pourPort.position.set(0, shotSleeveY + 65, fixedPlatenZ - 280);
-  group.add(pourPort);
-
-  // Injection Hydraulic Accumulator Bottles (Toyo Multi-Stage Accumulator System)
+  // Accumulator Bottles
   const bottleCount = machine.clampingForceTons > 600 ? 3 : 2;
   for (let i = 0; i < bottleCount; i++) {
     const bX = (i - (bottleCount - 1) / 2) * 180;
@@ -247,19 +288,17 @@ export function buildToyoMachine(
       MAT.toyoGreen
     );
     bottle.position.set(bX, shotSleeveY + 280, fixedPlatenZ - shotSleeveLen - 200);
-    group.add(bottle);
+    machineGroup.add(bottle);
 
-    // Pressure Gauge on top of bottle
     const bGauge = new THREE.Mesh(
       new THREE.CylinderGeometry(18, 18, 12, 16),
       MAT.brass
     );
     bGauge.position.set(bX, shotSleeveY + 680, fixedPlatenZ - shotSleeveLen - 200);
-    group.add(bGauge);
+    machineGroup.add(bGauge);
   }
 
-  // 6. TOYO PLUNGER LUBRICATOR UNIT (DM05 / DM10 / L-15)
-  const lubeModel = machine.plungerLubricatorModel || 'DM05/DC-TY-B1';
+  // Plunger Lubricator Unit
   const lubeUnitX = 140;
   const lubeUnitY = shotSleeveY + 200;
   const lubeUnitZ = fixedPlatenZ - 280;
@@ -269,33 +308,16 @@ export function buildToyoMachine(
     MAT.jointDark
   );
   lubeBracket.position.set(lubeUnitX, lubeUnitY, lubeUnitZ);
-  group.add(lubeBracket);
+  machineGroup.add(lubeBracket);
 
-  // Translucent Oil-Mist Reservoir Tank
   const lubeTank = new THREE.Mesh(
     new THREE.CylinderGeometry(35, 35, 120, 16),
     MAT.screenGlass
   );
   lubeTank.position.set(lubeUnitX, lubeUnitY + 110, lubeUnitZ);
-  group.add(lubeTank);
+  machineGroup.add(lubeTank);
 
-  // Oil delivery nozzle tube into shot sleeve
-  try {
-    const lubeCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(lubeUnitX, lubeUnitY + 50, lubeUnitZ),
-      new THREE.Vector3(lubeUnitX * 0.5, lubeUnitY + 20, lubeUnitZ),
-      new THREE.Vector3(0, shotSleeveY + 80, lubeUnitZ)
-    ]);
-    const lubeTube = new THREE.Mesh(
-      new THREE.TubeGeometry(lubeCurve, 12, 5, 8, false),
-      MAT.copper
-    );
-    group.add(lubeTube);
-  } catch (e) {
-    // Ignore if geometry curve fails
-  }
-
-  // 7. TOYO SYSTEM 700EX OPERATOR CONSOLE & HMI
+  // Operator Console HMI
   const consoleX = platenW * 0.5 + 400;
   const consoleY = -200;
   const consoleZ = fixedPlatenZ + 150;
@@ -305,53 +327,527 @@ export function buildToyoMachine(
     MAT.cabinetGrey
   );
   hmiCabinet.position.set(consoleX, consoleY, consoleZ);
-  hmiCabinet.castShadow = true;
-  group.add(hmiCabinet);
+  machineGroup.add(hmiCabinet);
 
-  // 15-inch Touchscreen Color Monitor
   const hmiScreen = new THREE.Mesh(
     new THREE.BoxGeometry(20, 260, 200),
     MAT.screenGlass
   );
   hmiScreen.position.set(consoleX - 160, consoleY + 240, consoleZ);
-  group.add(hmiScreen);
+  machineGroup.add(hmiScreen);
 
-  // Toyo Logo Badge Bar
-  const toyoBadge = new THREE.Mesh(
-    new THREE.BoxGeometry(18, 35, 200),
-    MAT.alertRed
+  // Fixed Die Half (bolted to Fixed Platen)
+  const fixedDieBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width, die.dimensions.height, depth),
+    MAT.dieSteelH13
   );
-  toyoBadge.position.set(consoleX - 160, consoleY + 390, consoleZ);
-  group.add(toyoBadge);
+  fixedDieBlock.position.set(0, 0, fixedDieZ - depth / 2);
+  fixedDieBlock.castShadow = true;
+  machineGroup.add(fixedDieBlock);
 
-  // Operator Emergency Stop & Push Buttons
-  const eStop = new THREE.Mesh(
-    new THREE.CylinderGeometry(18, 18, 20, 16),
-    MAT.alertRed
+  const fixedParting = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width * 0.96, die.dimensions.height * 0.96, 6),
+    MAT.partingBevel
   );
-  eStop.rotation.z = Math.PI / 2;
-  eStop.position.set(consoleX - 170, consoleY + 60, consoleZ - 50);
-  group.add(eStop);
+  fixedParting.position.set(0, 0, fixedDieZ - 3);
+  machineGroup.add(fixedParting);
 
-  // 3-Color Andon Signal Tower (Red / Amber / Green)
-  const towerBase = new THREE.Mesh(
-    new THREE.CylinderGeometry(15, 15, 220, 16),
+  // Fixed Die Sprue Bushing
+  const sprueBush = new THREE.Mesh(
+    new THREE.CylinderGeometry(48, 48, depth + 8, 24),
+    MAT.cavityDarkEDM
+  );
+  sprueBush.rotation.x = Math.PI / 2;
+  sprueBush.position.set(0, shotSleeveY, fixedDieZ - depth / 2);
+  machineGroup.add(sprueBush);
+
+  // =========================================================================
+  // B. DYNAMIC TRAVELING ASSEMBLY (movingAssemblyGroup)
+  // =========================================================================
+  movingAssemblyGroup.position.set(0, 0, closedMovPlatenZ);
+
+  // Movable Platen Block
+  const movPlaten = new THREE.Mesh(
+    new THREE.BoxGeometry(movPlatenW, movPlatenH, platenThick),
+    MAT.toyoGrey
+  );
+  movPlaten.position.set(0, 0, 0);
+  movPlaten.castShadow = true;
+  movPlaten.receiveShadow = true;
+  movingAssemblyGroup.add(movPlaten);
+
+  // Movable Platen Top Shelf Deck
+  const movShelf = new THREE.Mesh(
+    new THREE.BoxGeometry(movPlatenW * 0.78, 45, platenThick * 1.5),
+    MAT.platenSteel
+  );
+  movShelf.position.set(0, movPlatenH / 2 + 22, 0);
+  movingAssemblyGroup.add(movShelf);
+
+  // Bronze Guide Shoes
+  [-1, 1].forEach(side => {
+    const shoe = new THREE.Mesh(
+      new THREE.BoxGeometry(110, 45, platenThick * 1.2),
+      MAT.brass
+    );
+    shoe.position.set(side * (movPlatenW * 0.38), -movPlatenH / 2 - 20, 0);
+    movingAssemblyGroup.add(shoe);
+  });
+
+  // 4 Tie-Bar Guide Bushings
+  corners.forEach(([tx, ty]) => {
+    const bushing = new THREE.Mesh(
+      new THREE.CylinderGeometry(tbRadius * 1.45, tbRadius * 1.45, platenThick + 16, 20),
+      MAT.brass
+    );
+    bushing.rotation.x = Math.PI / 2;
+    bushing.position.set(tx, ty, 0);
+    movingAssemblyGroup.add(bushing);
+  });
+
+  // Ejector Hydraulic Cylinder
+  const ejectorCyl = new THREE.Mesh(
+    new THREE.CylinderGeometry(85, 85, machine.ejectorStroke + 180, 24),
     MAT.jointDark
   );
-  towerBase.position.set(consoleX, consoleY + 700, consoleZ);
-  group.add(towerBase);
+  ejectorCyl.rotation.x = Math.PI / 2;
+  ejectorCyl.position.set(0, 0, platenThick / 2 + (machine.ejectorStroke + 180) / 2);
+  movingAssemblyGroup.add(ejectorCyl);
 
-  const lightR = new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 32, 16), MAT.alertRed);
-  lightR.position.set(consoleX, consoleY + 840, consoleZ);
-  group.add(lightR);
+  // Movable Die Half (Bolted to Movable Platen)
+  const movDieRelZ = -platenThick / 2 - depth / 2;
+  const movDieBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width, die.dimensions.height, depth),
+    MAT.dieSteelH13
+  );
+  movDieBlock.position.set(0, 0, movDieRelZ);
+  movDieBlock.castShadow = true;
+  movingAssemblyGroup.add(movDieBlock);
 
-  const lightA = new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 32, 16), MAT.alertAmber);
-  lightA.position.set(consoleX, consoleY + 805, consoleZ);
-  group.add(lightA);
+  const movParting = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width * 0.96, die.dimensions.height * 0.96, 6),
+    MAT.partingBevel
+  );
+  movParting.position.set(0, 0, movDieRelZ + depth / 2 - 3);
+  movingAssemblyGroup.add(movParting);
 
-  const lightG = new THREE.Mesh(new THREE.CylinderGeometry(20, 20, 32, 16), MAT.alertGreen);
-  lightG.position.set(consoleX, consoleY + 770, consoleZ);
-  group.add(lightG);
+  // Ejector Pins Sub-Assembly
+  const ejectorPinsGroup = new THREE.Group();
+  ejectorPinsGroup.name = 'DCM_Ejector_Pins';
+  movingAssemblyGroup.add(ejectorPinsGroup);
+
+  // Corner and center ejector pins
+  const pinCornerOffsets: [number, number][] = [
+    [-die.dimensions.width * 0.28, -die.dimensions.height * 0.28],
+    [die.dimensions.width * 0.28, -die.dimensions.height * 0.28],
+    [die.dimensions.width * 0.28, die.dimensions.height * 0.28],
+    [-die.dimensions.width * 0.28, die.dimensions.height * 0.28],
+    [0, shotSleeveY]
+  ];
+
+  pinCornerOffsets.forEach(([px, py]) => {
+    const pin = new THREE.Mesh(
+      new THREE.CylinderGeometry(8, 8, depth * 1.25, 16),
+      MAT.ejectorPinSteel
+    );
+    pin.rotation.x = Math.PI / 2;
+    pin.position.set(px, py, movDieRelZ);
+    ejectorPinsGroup.add(pin);
+  });
+
+  // Ejector Hydraulic Piston Rod
+  const ejectorRod = new THREE.Mesh(
+    new THREE.CylinderGeometry(40, 40, machine.ejectorStroke + 120, 20),
+    MAT.chromeTieBar
+  );
+  ejectorRod.rotation.x = Math.PI / 2;
+  ejectorRod.position.set(0, 0, platenThick / 2 + 50);
+  ejectorPinsGroup.add(ejectorRod);
+
+  // =========================================================================
+  // C. DYNAMIC MOLTEN METAL CAVITY FILL MESH
+  // =========================================================================
+  const moltenCavityMaterial = MAT.moltenMetal.clone();
+  const fillGroup = new THREE.Group();
+  fillGroup.name = 'DCM_Molten_Fill';
+
+  const biscuit = new THREE.Mesh(
+    new THREE.CylinderGeometry(45, 48, 28, 24),
+    moltenCavityMaterial
+  );
+  biscuit.rotation.x = Math.PI / 2;
+  biscuit.position.set(0, shotSleeveY, 0);
+  fillGroup.add(biscuit);
+
+  const runner = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width * 0.45, 24, 20),
+    moltenCavityMaterial
+  );
+  runner.position.set(0, shotSleeveY * 0.5, 0);
+  fillGroup.add(runner);
+
+  const castPartPlate = new THREE.Mesh(
+    new THREE.BoxGeometry(die.dimensions.width * 0.55, die.dimensions.height * 0.48, 28),
+    moltenCavityMaterial
+  );
+  castPartPlate.position.set(0, 0, 0);
+  fillGroup.add(castPartPlate);
+
+  const moltenCavityFillMesh = fillGroup as unknown as THREE.Mesh;
+  moltenCavityFillMesh.position.set(0, 0, fixedDieZ);
+  moltenCavityFillMesh.visible = false;
+  machineGroup.add(fillGroup);
+
+  // =========================================================================
+  // D. KINEMATICS UPDATE HANDLER
+  // =========================================================================
+  const updateKinematics = (
+    platenOpenPct: number,
+    platenOpenDistMm: number,
+    ejectorMm: number,
+    injectionFillPct: number,
+    currentPhase: CellCyclePhase
+  ) => {
+    // 1. Moving Platen Z position
+    const openOffsetZ = (Math.max(0, Math.min(100, platenOpenPct)) / 100) * platenOpenDistMm;
+    movingAssemblyGroup.position.z = closedMovPlatenZ + openOffsetZ;
+
+    // 2. Ejector Pins along Z (extends towards negative local Z)
+    ejectorPinsGroup.position.z = -Math.max(0, Math.min(65, ejectorMm));
+
+    // 3. Injection Plunger Stroke inside shot sleeve during 02_INJECTION
+    if (currentPhase === '02_INJECTION') {
+      const pProg = Math.max(0, Math.min(1, injectionFillPct / 100));
+      const strokeDist = 280;
+      plungerRodMesh.position.z = fixedPlatenZ - shotSleeveLen + 150 + pProg * strokeDist;
+    } else if (currentPhase === '01_MOLD_CLOSE') {
+      plungerRodMesh.position.z = fixedPlatenZ - shotSleeveLen + 150;
+    }
+
+    // 4. Molten Metal Fill Mesh Animation
+    const movPartingZ = movingAssemblyGroup.position.z - platenThick / 2 - depth / 2 + depth / 2;
+
+    if (currentPhase === '01_MOLD_CLOSE') {
+      moltenCavityFillMesh.visible = false;
+      moltenCavityMaterial.emissiveIntensity = 0;
+    } else if (currentPhase === '02_INJECTION') {
+      moltenCavityFillMesh.visible = true;
+      moltenCavityFillMesh.position.set(0, 0, fixedDieZ);
+      const fillProg = injectionFillPct / 100;
+
+      if (fillProg < 0.99) {
+        // Fast injection: bright emissive orange
+        const s = 0.2 + fillProg * 0.8;
+        moltenCavityFillMesh.scale.set(s, s, 1);
+        moltenCavityMaterial.color.setHex(0xff5500);
+        moltenCavityMaterial.emissive.setHex(0xff3300);
+        moltenCavityMaterial.emissiveIntensity = 2.4;
+      } else {
+        // Solidification & dwell cooling
+        moltenCavityFillMesh.scale.set(1, 1, 1);
+        const coolProg = Math.max(0, Math.min(1, (injectionFillPct - 80) / 20));
+        moltenCavityMaterial.emissiveIntensity = Math.max(0, 2.4 * (1 - coolProg));
+        moltenCavityMaterial.color.lerpColors(
+          new THREE.Color(0xff5500),
+          new THREE.Color(0xd1d5db),
+          coolProg
+        );
+      }
+    } else if (currentPhase === '03_MOLD_OPEN' || currentPhase === '04_SPRAY_LUBE') {
+      moltenCavityFillMesh.visible = true;
+      moltenCavityFillMesh.scale.set(1, 1, 1);
+      moltenCavityMaterial.color.setHex(0xd1d5db);
+      moltenCavityMaterial.emissiveIntensity = 0;
+      moltenCavityFillMesh.position.set(0, 0, movPartingZ - ejectorMm);
+    } else if (currentPhase === '05_PART_EXTRACTION') {
+      const isExtracted = ejectorMm === 0;
+      moltenCavityFillMesh.visible = !isExtracted;
+      moltenCavityFillMesh.position.set(0, 0, movPartingZ - ejectorMm);
+    } else {
+      moltenCavityFillMesh.visible = false;
+      moltenCavityMaterial.emissiveIntensity = 0;
+    }
+  };
+
+  const dispose = () => {
+    moltenCavityMaterial.dispose();
+  };
+
+  return {
+    movingAssemblyGroup,
+    ejectorPinsGroup,
+    plungerRodMesh,
+    moltenCavityFillMesh,
+    moltenCavityMaterial,
+    closedMovPlatenZ,
+    fixedPlatenZ,
+    depth,
+    updateKinematics,
+    dispose
+  };
+}
+
+/**
+ * Creates 6-Axis Extractor Floor Robot Rig with Pneumatic Part Gripper EOAT
+ */
+export function createExtractorRobotRig(
+  armGroup: THREE.Group,
+  machine: DieCastingMachine,
+  die: DieModel
+): ExtractorRobotRig {
+  while (armGroup.children.length > 0) {
+    armGroup.remove(armGroup.children[0]);
+  }
+
+  const platenW = machine.platenWidth;
+  const platenH = machine.platenHeight;
+  const daylightCenterZ = (die.fixedDieOffsetZ + die.movableDieOffsetZ) / 2;
+
+  // Base Pedestal on floor beside tie bars
+  const basePos = new THREE.Vector3(
+    platenW * 0.52 + 380,
+    -platenH * 0.5 - 20,
+    daylightCenterZ + 180
+  );
+
+  // 1. Floor Pedestal Structure
+  const pedestalGroup = new THREE.Group();
+  pedestalGroup.position.copy(basePos);
+  armGroup.add(pedestalGroup);
+
+  const basePlate = new THREE.Mesh(
+    new THREE.BoxGeometry(520, 35, 520),
+    MAT.jointDark
+  );
+  pedestalGroup.add(basePlate);
+
+  const hazardBorder = new THREE.Mesh(
+    new THREE.BoxGeometry(540, 10, 540),
+    MAT.safetyYellow
+  );
+  hazardBorder.position.y = -18;
+  pedestalGroup.add(hazardBorder);
+
+  const riser = new THREE.Mesh(
+    new THREE.CylinderGeometry(130, 145, 480, 24),
+    MAT.cabinetGrey
+  );
+  riser.position.y = 250;
+  pedestalGroup.add(riser);
+
+  // Robot Base Turn Table (J1)
+  const j1Group = new THREE.Group();
+  j1Group.position.set(basePos.x, basePos.y + 490, basePos.z);
+  armGroup.add(j1Group);
+
+  const j1Base = new THREE.Mesh(
+    new THREE.CylinderGeometry(150, 160, 110, 24),
+    MAT.fanucYellow
+  );
+  j1Group.add(j1Base);
+
+  // Robot Shoulder (J2)
+  const j2Group = new THREE.Group();
+  j2Group.position.set(0, 95, 0);
+  j1Group.add(j2Group);
+
+  const j2Shoulder = new THREE.Mesh(
+    new THREE.BoxGeometry(190, 180, 200),
+    MAT.fanucYellow
+  );
+  j2Group.add(j2Shoulder);
+
+  // Upper Arm Link (J3)
+  const j3Group = new THREE.Group();
+  j3Group.position.set(0, 90, 0);
+  j2Group.add(j3Group);
+
+  const upperArm = new THREE.Mesh(
+    new THREE.BoxGeometry(130, 480, 140),
+    MAT.fanucYellow
+  );
+  upperArm.position.y = 240;
+  j3Group.add(upperArm);
+
+  // Forearm & Elbow (J4)
+  const j4Group = new THREE.Group();
+  j4Group.position.set(0, 480, 0);
+  j3Group.add(j4Group);
+
+  const elbow = new THREE.Mesh(
+    new THREE.SphereGeometry(85, 20, 20),
+    MAT.jointDark
+  );
+  j4Group.add(elbow);
+
+  const forearm = new THREE.Mesh(
+    new THREE.CylinderGeometry(65, 75, 450, 20),
+    MAT.fanucYellow
+  );
+  forearm.position.y = 225;
+  j4Group.add(forearm);
+
+  // Wrist Pitch Link (J5)
+  const j5Group = new THREE.Group();
+  j5Group.position.set(0, 450, 0);
+  j4Group.add(j5Group);
+
+  const wrist = new THREE.Mesh(
+    new THREE.BoxGeometry(110, 90, 110),
+    MAT.jointDark
+  );
+  j5Group.add(wrist);
+
+  // Wrist Roll Flange (J6) & Gripper EOAT
+  const j6Group = new THREE.Group();
+  j6Group.position.set(0, 45, 0);
+  j5Group.add(j6Group);
+
+  // Pneumatic Part Gripper EOAT
+  const gripperBody = new THREE.Mesh(
+    new THREE.BoxGeometry(320, 55, 75),
+    MAT.gripperBody
+  );
+  j6Group.add(gripperBody);
+
+  [-1, 1].forEach(side => {
+    const cyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(22, 22, 90, 16),
+      MAT.gripperPneumatic
+    );
+    cyl.rotation.z = Math.PI / 2;
+    cyl.position.set(side * 85, 0, -45);
+    j6Group.add(cyl);
+  });
+
+  const jaw1 = new THREE.Mesh(
+    new THREE.BoxGeometry(25, 75, 55),
+    MAT.gripperJaw
+  );
+  jaw1.position.set(-60, 35, 0);
+  j6Group.add(jaw1);
+
+  const jaw2 = new THREE.Mesh(
+    new THREE.BoxGeometry(25, 75, 55),
+    MAT.gripperJaw
+  );
+  jaw2.position.set(60, 35, 0);
+  j6Group.add(jaw2);
+
+  const gripperJaws = [jaw1, jaw2];
+
+  // Part Present Sensor LED
+  const sensorLed = new THREE.Mesh(
+    new THREE.SphereGeometry(9, 12, 12),
+    MAT.gripperSensorGreen
+  );
+  sensorLed.position.set(0, 30, 40);
+  sensorLed.visible = false;
+  j6Group.add(sensorLed);
+
+  // Extracted Part Mesh attached to Gripper
+  const partMeshHolder = new THREE.Group();
+  partMeshHolder.name = 'Gripper_Part_Holder';
+  partMeshHolder.position.set(0, 45, 0);
+  j6Group.add(partMeshHolder);
+
+  const partMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(180, 140, 26),
+    MAT.aluminumPart
+  );
+  partMesh.visible = false;
+  partMeshHolder.add(partMesh);
+
+  // Kinematics Update
+  const updateExtractionKinematics = (
+    phase: CellCyclePhase,
+    progress: number,
+    isPartGripped: boolean
+  ) => {
+    if (phase === '05_PART_EXTRACTION') {
+      const p = Math.max(0, Math.min(1, progress));
+
+      if (p < 0.28) {
+        // Entering daylight between tie bars
+        const s = p / 0.28;
+        j1Group.rotation.y = -1.3 + s * 1.15; // -75 deg to -9 deg
+        j2Group.rotation.z = -0.6 + s * 1.15;
+        j3Group.rotation.z = 0.95 - s * 1.3;
+        j4Group.rotation.y = 0;
+        j5Group.rotation.z = -0.4 + s * 0.2;
+        jaw1.position.x = -65;
+        jaw2.position.x = 65;
+        sensorLed.visible = false;
+        partMesh.visible = false;
+      } else if (p < 0.38) {
+        // Gripping part
+        const s = (p - 0.28) / 0.10;
+        jaw1.position.x = -65 + s * 40;
+        jaw2.position.x = 65 - s * 40;
+        sensorLed.visible = true;
+        partMesh.visible = isPartGripped;
+      } else if (p < 0.65) {
+        // Retracting part out of die and clearing tie bars
+        const s = (p - 0.38) / 0.27;
+        j1Group.rotation.y = -0.15 - s * 0.8;
+        j2Group.rotation.z = 0.55 - s * 0.4;
+        j3Group.rotation.z = -0.35 + s * 0.7;
+        j5Group.rotation.z = -0.2 - s * 0.2;
+        jaw1.position.x = -25;
+        jaw2.position.x = 25;
+        sensorLed.visible = true;
+        partMesh.visible = true;
+      } else if (p < 0.88) {
+        // Swing over quench water tank / drop table
+        const s = (p - 0.65) / 0.23;
+        j1Group.rotation.y = -0.95 - s * 1.1; // -120 deg
+        j2Group.rotation.z = 0.15 + s * 0.35;
+        j3Group.rotation.z = 0.35 - s * 0.5;
+        j5Group.rotation.z = -0.4 + s * 0.1;
+        jaw1.position.x = -25;
+        jaw2.position.x = 25;
+        sensorLed.visible = true;
+        partMesh.visible = true;
+      } else {
+        // Drop part and begin folding arm back
+        const s = (p - 0.88) / 0.12;
+        jaw1.position.x = -25 - s * 40;
+        jaw2.position.x = 25 + s * 40;
+        sensorLed.visible = false;
+        partMesh.visible = false;
+        j1Group.rotation.y = -2.05 + s * 0.75;
+        j2Group.rotation.z = 0.5 - s * 1.1;
+        j3Group.rotation.z = -0.15 + s * 1.1;
+      }
+    } else {
+      // HOME_STANDBY: arm tucked outside tie-bar envelope
+      j1Group.rotation.y = -1.3;
+      j2Group.rotation.z = -0.6;
+      j3Group.rotation.z = 0.95;
+      j4Group.rotation.y = 0;
+      j5Group.rotation.z = -0.4;
+      jaw1.position.x = -65;
+      jaw2.position.x = 65;
+      sensorLed.visible = false;
+      partMesh.visible = false;
+    }
+  };
+
+  const dispose = () => {
+    while (armGroup.children.length > 0) {
+      armGroup.remove(armGroup.children[0]);
+    }
+  };
+
+  return {
+    group: armGroup,
+    gripperFlangeGroup: j6Group,
+    gripperJaws,
+    partMeshHolder,
+    partMesh,
+    updateExtractionKinematics,
+    dispose
+  };
 }
 
 /**
@@ -732,6 +1228,17 @@ export type RobotArmPoseInput =
     };
 
 /**
+ * Real-time spray emission state interface for EOAT manifold plumes
+ */
+export interface SprayEmissionState {
+  isSpraying: boolean;
+  action: 'LUBE_SPRAY' | 'AIR_BLOW' | 'LUBE_AND_AIR' | 'TRANSIT' | 'WAIT';
+  targetFace?: 'FIXED_DIE' | 'MOVABLE_DIE' | 'BOTH';
+  flowRateMlPerSec?: number;
+  showSprayCone?: boolean;
+}
+
+/**
  * Authoritative Kinematic Robot Arm Rig Interface
  */
 export interface RobotArmRig {
@@ -740,11 +1247,13 @@ export interface RobotArmRig {
   tcpGroup: THREE.Group;
   flangeGroup: THREE.Group;
   jointGroups: [THREE.Group, THREE.Group, THREE.Group, THREE.Group, THREE.Group, THREE.Group];
+  sprayEmitterGroup?: THREE.Group;
   updatePose: (
     pose: RobotArmPoseInput,
     tcpMatrix?: number[],
     jointsDegFallback?: [number, number, number, number, number, number]
   ) => void;
+  updateSprayEmission?: (state: SprayEmissionState) => void;
   dispose: () => void;
 }
 
@@ -1638,6 +2147,124 @@ export function createRobotArmRig(
   }
 
   // =========================================================================
+  // 2.5 EOAT MANIFOLD MULTI-NOZZLE SPRAY EMITTER PLUMES
+  // =========================================================================
+  const sprayEmitterGroup = new THREE.Group();
+  sprayEmitterGroup.name = 'EOAT_SprayEmitterGroup';
+  sprayEmitterGroup.visible = false;
+  tcpGroup.add(sprayEmitterGroup);
+
+  const materials: THREE.Material[] = [];
+  const trackMat = <T extends THREE.Material>(m: T): T => {
+    materials.push(m);
+    return m;
+  };
+
+  interface NozzlePlumeEmitter {
+    mesh: THREE.Mesh;
+    nozzle: SprayNozzleConfig;
+    targetFaceDir: 'FIXED' | 'MOVABLE' | 'OMNI';
+    coneLength: number;
+    coneRadius: number;
+  }
+
+  const nozzlePlumes: NozzlePlumeEmitter[] = [];
+  const rawNozzles = tool.nozzles || tool.eoatSpec?.nozzles || [];
+
+  const nozzlesToEmit: SprayNozzleConfig[] = rawNozzles.length > 0 ? rawNozzles : [
+    { id: 'def-fixed', name: 'Default Fixed Nozzle', offsetMm: [0, 0, 20], directionVector: [0, 0, -1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 },
+    { id: 'def-movable', name: 'Default Movable Nozzle', offsetMm: [0, 0, -20], directionVector: [0, 0, 1], sprayAngleDeg: 65, type: 'combined', flowRatio: 1.0, sprayWidthMm: 180 }
+  ];
+
+  const isMicro = activeEoatType === 'MICRO_DOSING';
+  const defaultPlumeLength = isMicro ? 150 : 230;
+
+  nozzlesToEmit.forEach(nz => {
+    const halfAngleRad = ((nz.sprayAngleDeg || 60) / 2) * (Math.PI / 180);
+    const plumeLen = defaultPlumeLength;
+    const plumeRad = Math.max(15, Math.tan(halfAngleRad) * plumeLen);
+
+    const coneGeo = trackGeo(new THREE.ConeGeometry(plumeRad, plumeLen, 16, 1, true));
+    coneGeo.translate(0, -plumeLen / 2, 0);
+    coneGeo.rotateX(-Math.PI / 2);
+
+    const plumeMat = trackMat(new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    }));
+
+    const coneMesh = new THREE.Mesh(coneGeo, plumeMat);
+    coneMesh.position.set(nz.offsetMm[0], nz.offsetMm[1], nz.offsetMm[2]);
+
+    const dir = new THREE.Vector3(nz.directionVector[0], nz.directionVector[1], nz.directionVector[2]);
+    if (dir.lengthSq() > 0.001) {
+      dir.normalize();
+      const targetLook = new THREE.Vector3(
+        nz.offsetMm[0] + dir.x * 100,
+        nz.offsetMm[1] + dir.y * 100,
+        nz.offsetMm[2] + dir.z * 100
+      );
+      coneMesh.lookAt(targetLook);
+    }
+
+    sprayEmitterGroup.add(coneMesh);
+
+    const dirZ = nz.directionVector[2];
+    const targetFaceDir = dirZ < -0.05 ? 'FIXED' : dirZ > 0.05 ? 'MOVABLE' : 'OMNI';
+
+    nozzlePlumes.push({
+      mesh: coneMesh,
+      nozzle: nz,
+      targetFaceDir,
+      coneLength: plumeLen,
+      coneRadius: plumeRad
+    });
+  });
+
+  const updateSprayEmission = (options: SprayEmissionState) => {
+    if (!options.isSpraying || options.showSprayCone === false) {
+      sprayEmitterGroup.visible = false;
+      return;
+    }
+
+    sprayEmitterGroup.visible = true;
+    const isAirBlow = options.action === 'AIR_BLOW';
+    const isLubeAndAir = options.action === 'LUBE_AND_AIR';
+
+    nozzlePlumes.forEach(p => {
+      // Filter by target die face
+      if (options.targetFace === 'FIXED_DIE' && p.targetFaceDir === 'MOVABLE') {
+        p.mesh.visible = false;
+        return;
+      }
+      if (options.targetFace === 'MOVABLE_DIE' && p.targetFaceDir === 'FIXED') {
+        p.mesh.visible = false;
+        return;
+      }
+
+      p.mesh.visible = true;
+      const mat = p.mesh.material as THREE.MeshBasicMaterial;
+
+      if (isAirBlow) {
+        mat.color.setHex(0xe0f2fe);
+        mat.opacity = 0.22;
+      } else if (isLubeAndAir) {
+        mat.color.setHex(0x06b6d4);
+        mat.opacity = 0.38;
+      } else if (isMicro) {
+        mat.color.setHex(0x38bdf8);
+        mat.opacity = 0.28;
+      } else {
+        mat.color.setHex(0x0ea5e9);
+        mat.opacity = 0.34;
+      }
+    });
+  };
+
+  // =========================================================================
   // 3. ZERO-ALLOCATION FAST 60FPS JOINT POSE UPDATE
   // =========================================================================
   let lastJointsDeg: [number, number, number, number, number, number] = [0, 0, 0, 0, 0, 0];
@@ -1689,6 +2316,8 @@ export function createRobotArmRig(
   const dispose = () => {
     geometries.forEach(g => g.dispose());
     geometries.length = 0;
+    materials.forEach(m => m.dispose());
+    materials.length = 0;
   };
 
   const rig: RobotArmRig = {
@@ -1697,7 +2326,9 @@ export function createRobotArmRig(
     tcpGroup,
     flangeGroup,
     jointGroups: [j1Group, j2Group, j3Group, j4Group, j5Group, j6Group],
+    sprayEmitterGroup,
     updatePose,
+    updateSprayEmission,
     dispose
   };
 

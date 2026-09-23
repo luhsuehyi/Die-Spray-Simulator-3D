@@ -6,12 +6,18 @@ import {
   Clock,
   Upload,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  SprayCan as SprayIcon,
+  Bot,
+  Gauge,
+  Wind,
+  Droplets
 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
 import { translations } from '../../utils/i18n';
-import { MACHINE_PRESETS, ROBOT_PRESETS, DIE_PRESETS } from '../../utils/presets';
+import { MACHINE_PRESETS, ROBOT_PRESETS, DIE_PRESETS, SPRAY_HEAD_PRESETS, EOAT_PRESETS } from '../../utils/presets';
 import { calculateProcessCost } from '../../utils/machineCalculations';
+import { EoatType, SprayHeadType, SprayNozzleConfig, ToolCenterPoint } from '../../types/robot';
 
 export const RightSidebar: React.FC = () => {
   const {
@@ -22,6 +28,9 @@ export const RightSidebar: React.FC = () => {
     setRobot,
     die,
     setDie,
+    tool,
+    setTool,
+    setSprayHeadPreset,
     sprayPhysics,
     setSprayPhysics,
     trajectoryPlan,
@@ -128,8 +137,21 @@ export const RightSidebar: React.FC = () => {
             </div>
 
             {/* Robot Model Selector */}
-            <div>
-              <div className="text-[10px] text-slate-400 font-mono">SPRAY ROBOT</div>
+            <div className="pt-2 border-t border-slate-800/60">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span className="flex items-center gap-1 font-semibold text-slate-300">
+                  <Bot className="w-3 h-3 text-blue-400" />
+                  ROBOT MODEL
+                </span>
+                <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-bold ${
+                  robot.manufacturer === 'FANUC' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                  robot.manufacturer === 'ABB' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                  robot.manufacturer === 'KUKA' ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' :
+                  'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                }`}>
+                  {robot.manufacturer}
+                </span>
+              </div>
               <select
                 id="robot-model-selector"
                 value={robot.id}
@@ -143,27 +165,30 @@ export const RightSidebar: React.FC = () => {
                     });
                   }
                 }}
-                className="w-full mt-0.5 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:border-blue-500 focus:outline-none"
+                className="w-full mt-1 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none font-medium"
               >
                 {ROBOT_PRESETS.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.payloadKg}kg / {r.reachMm}mm)
+                  </option>
                 ))}
               </select>
-              <div className="mt-0.5 text-[9.5px] text-slate-400 flex justify-between font-mono">
+              <div className="mt-1 text-[9.5px] text-slate-400 flex justify-between font-mono">
                 <span>Reach: {robot.reachMm}mm</span>
                 <span>Payload: {robot.payloadKg}kg</span>
+                <span>Rep.: ±{robot.repeatabilityMm}mm</span>
               </div>
             </div>
 
             {/* Robot Mount Orientation */}
-            <div className="pt-1 border-t border-slate-800/60">
+            <div className="pt-2 border-t border-slate-800/60">
               <div className="text-[10px] text-slate-400 font-mono mb-1">MOUNT CONFIGURATION</div>
               <div className="grid grid-cols-3 gap-1">
                 <button
                   onClick={() => setRobotMountType('top')}
                   className={`py-1 rounded text-[11px] font-medium border transition cursor-pointer ${
                     robot.mountOrientation === 'top' || robot.mountOrientation === 'top_machine_mount'
-                      ? 'bg-blue-600 text-white border-blue-500 font-semibold'
+                      ? 'bg-blue-600 text-white border-blue-500 font-semibold shadow-xs'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -173,7 +198,7 @@ export const RightSidebar: React.FC = () => {
                   onClick={() => setRobotMountType('side')}
                   className={`py-1 rounded text-[11px] font-medium border transition cursor-pointer ${
                     robot.mountOrientation === 'side'
-                      ? 'bg-blue-600 text-white border-blue-500 font-semibold'
+                      ? 'bg-blue-600 text-white border-blue-500 font-semibold shadow-xs'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
@@ -183,12 +208,233 @@ export const RightSidebar: React.FC = () => {
                   onClick={() => setRobotMountType('rear')}
                   className={`py-1 rounded text-[11px] font-medium border transition cursor-pointer ${
                     robot.mountOrientation === 'rear'
-                      ? 'bg-blue-600 text-white border-blue-500 font-semibold'
+                      ? 'bg-blue-600 text-white border-blue-500 font-semibold shadow-xs'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   Rear Shelf
                 </button>
+              </div>
+            </div>
+
+            {/* EOAT Manifold Archetype & Config Selector */}
+            <div className="pt-2 border-t border-slate-800/60 space-y-2">
+              <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                <span className="flex items-center gap-1 font-bold text-slate-200">
+                  <SprayIcon className="w-3 h-3 text-cyan-400" />
+                  EOAT SPRAY MANIFOLD
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-800/60 font-semibold">
+                  {tool.eoatType || 'MONOBLOCK'}
+                </span>
+              </div>
+
+              {/* Archetype Dropdown Selector */}
+              <div>
+                <select
+                  id="eoat-archetype-selector"
+                  value={
+                    tool.eoatType ||
+                    (tool.sprayHeadType === 'MONOBLOCK' ? 'MONOBLOCK' :
+                     tool.sprayHeadType === 'MODULAR' || tool.sprayHeadType === 'modular_extension' ? 'MODULAR' :
+                     tool.sprayHeadType === 'MATRIX' || tool.sprayHeadType === 'contour_frame' ? 'MATRIX' :
+                     tool.sprayHeadType === 'MICRO_DOSING' || tool.sprayHeadType === 'micro_spray' ? 'MICRO_DOSING' :
+                     'MONOBLOCK')
+                  }
+                  onChange={e => {
+                    const chosen = e.target.value as SprayHeadType;
+                    setSprayHeadPreset(chosen);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200 focus:border-cyan-500 focus:outline-none font-semibold"
+                >
+                  <option value="MONOBLOCK">MONOBLOCK (Monoblock Billet Manifold)</option>
+                  <option value="MODULAR">MODULAR (Modular Block - Dual Circuit)</option>
+                  <option value="MATRIX">MATRIX (Matrix Nozzle Array)</option>
+                  <option value="MICRO_DOSING">MICRO_DOSING (Micro-Dosing MQL System)</option>
+                </select>
+              </div>
+
+              {/* Key Manifold Specs Quick Bar */}
+              <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-slate-400 bg-slate-950/80 p-1.5 rounded border border-slate-800/80">
+                <div className="text-center">
+                  <span className="block text-slate-500 text-[8px]">WIDTH</span>
+                  <span className="text-slate-200 font-bold">{tool.manifoldWidthMm}mm</span>
+                </div>
+                <div className="text-center border-x border-slate-800">
+                  <span className="block text-slate-500 text-[8px]">WEIGHT</span>
+                  <span className="text-slate-200 font-bold">{tool.weightKg}kg</span>
+                </div>
+                <div className="text-center">
+                  <span className="block text-slate-500 text-[8px]">DROPLET</span>
+                  <span className="text-cyan-300 font-bold">{tool.eoatSpec?.dropletSizeUm || (tool.eoatType === 'MICRO_DOSING' ? 22 : 52)} µm</span>
+                </div>
+              </div>
+
+              {/* Manifold Parameter Controls */}
+              <div className="space-y-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                {/* 1. Active Nozzle Count */}
+                <div>
+                  <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+                    <span className="flex items-center gap-1">
+                      <Droplets className="w-2.5 h-2.5 text-blue-400" />
+                      Active Nozzles
+                    </span>
+                    <span className="text-cyan-400 font-bold">{tool.nozzles?.length || tool.nozzleCount || 8} Nozzles</span>
+                  </div>
+                  <input
+                    id="eoat-nozzle-count-slider"
+                    type="range"
+                    min={2}
+                    max={32}
+                    step={2}
+                    value={tool.nozzles?.length || tool.nozzleCount || 8}
+                    onChange={e => {
+                      const count = Number(e.target.value);
+                      const currentNozzles = tool.nozzles || [];
+                      let nextNozzles: SprayNozzleConfig[] = [];
+                      if (count <= currentNozzles.length) {
+                        nextNozzles = currentNozzles.slice(0, count);
+                      } else {
+                        nextNozzles = [...currentNozzles];
+                        const diff = count - currentNozzles.length;
+                        for (let i = 0; i < diff; i++) {
+                          const template = currentNozzles[i % currentNozzles.length] || {
+                            id: `nz-extra-${i}`,
+                            name: `Nozzle ${nextNozzles.length + 1}`,
+                            offsetMm: [((i % 4) - 1.5) * 60, ((Math.floor(i / 4) % 2) - 0.5) * 40, i % 2 === 0 ? -25 : 25] as [number, number, number],
+                            directionVector: [0, 0, i % 2 === 0 ? -1 : 1] as [number, number, number],
+                            sprayAngleDeg: 65,
+                            type: 'combined' as const,
+                            flowRatio: 1.0,
+                            sprayWidthMm: 180
+                          };
+                          nextNozzles.push({
+                            ...template,
+                            id: `nz-dyn-${Date.now()}-${i}`,
+                            name: `Nozzle ${nextNozzles.length + 1}`,
+                            offsetMm: [
+                              template.offsetMm[0] + (i % 2 === 0 ? 12 : -12),
+                              template.offsetMm[1],
+                              template.offsetMm[2]
+                            ]
+                          });
+                        }
+                      }
+                      setTool({
+                        ...tool,
+                        nozzleCount: count,
+                        nozzles: nextNozzles
+                      });
+                    }}
+                    className="w-full accent-cyan-400 cursor-pointer h-1 bg-slate-800 rounded mt-1"
+                  />
+                </div>
+
+                {/* 2. Air Pressure (bar) */}
+                <div>
+                  <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+                    <span className="flex items-center gap-1">
+                      <Wind className="w-2.5 h-2.5 text-sky-400" />
+                      Air Pressure
+                    </span>
+                    <span className="text-sky-300 font-bold">{(tool.fluidAirSupply?.airPressureBar ?? 5.5).toFixed(1)} bar</span>
+                  </div>
+                  <input
+                    id="eoat-air-pressure-slider"
+                    type="range"
+                    min={2.0}
+                    max={8.0}
+                    step={0.1}
+                    value={tool.fluidAirSupply?.airPressureBar ?? 5.5}
+                    onChange={e => {
+                      const airBar = Number(e.target.value);
+                      setTool({
+                        ...tool,
+                        fluidAirSupply: {
+                          lubePressure: tool.fluidAirSupply?.lubePressure || '4.0 bar',
+                          airPressure: `${airBar.toFixed(1)} bar`,
+                          lubeFlowRate: tool.fluidAirSupply?.lubeFlowRate || '45 mL/sec',
+                          airConsumptionNlPerMin: tool.fluidAirSupply?.airConsumptionNlPerMin || 1400,
+                          connectionInterfaces: tool.fluidAirSupply?.connectionInterfaces || 'G 3/8" / G 1/2"',
+                          lubricantPressureBar: tool.fluidAirSupply?.lubricantPressureBar ?? 4.0,
+                          airPressureBar: airBar,
+                          antiDripSuckBack: tool.fluidAirSupply?.antiDripSuckBack,
+                          airKnifeIntegrated: tool.fluidAirSupply?.airKnifeIntegrated
+                        }
+                      });
+                    }}
+                    className="w-full accent-sky-400 cursor-pointer h-1 bg-slate-800 rounded mt-1"
+                  />
+                </div>
+
+                {/* 3. Lubricant Pressure (bar) */}
+                <div>
+                  <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+                    <span className="flex items-center gap-1">
+                      <Gauge className="w-2.5 h-2.5 text-emerald-400" />
+                      Lubricant Pressure
+                    </span>
+                    <span className="text-emerald-400 font-bold">{(tool.fluidAirSupply?.lubricantPressureBar ?? 4.0).toFixed(1)} bar</span>
+                  </div>
+                  <input
+                    id="eoat-lube-pressure-slider"
+                    type="range"
+                    min={1.0}
+                    max={6.0}
+                    step={0.1}
+                    value={tool.fluidAirSupply?.lubricantPressureBar ?? 4.0}
+                    onChange={e => {
+                      const lubeBar = Number(e.target.value);
+                      setTool({
+                        ...tool,
+                        fluidAirSupply: {
+                          lubePressure: `${lubeBar.toFixed(1)} bar`,
+                          airPressure: tool.fluidAirSupply?.airPressure || '5.5 bar',
+                          lubeFlowRate: tool.fluidAirSupply?.lubeFlowRate || '45 mL/sec',
+                          airConsumptionNlPerMin: tool.fluidAirSupply?.airConsumptionNlPerMin || 1400,
+                          connectionInterfaces: tool.fluidAirSupply?.connectionInterfaces || 'G 3/8" / G 1/2"',
+                          lubricantPressureBar: lubeBar,
+                          airPressureBar: tool.fluidAirSupply?.airPressureBar ?? 5.5,
+                          antiDripSuckBack: tool.fluidAirSupply?.antiDripSuckBack,
+                          airKnifeIntegrated: tool.fluidAirSupply?.airKnifeIntegrated
+                        }
+                      });
+                    }}
+                    className="w-full accent-emerald-400 cursor-pointer h-1 bg-slate-800 rounded mt-1"
+                  />
+                </div>
+
+                {/* 4. Spray Angle (deg) */}
+                <div>
+                  <div className="flex justify-between text-[10px] text-slate-300 font-mono">
+                    <span className="flex items-center gap-1">
+                      <SlidersHorizontal className="w-2.5 h-2.5 text-amber-400" />
+                      Spray Angle
+                    </span>
+                    <span className="text-amber-300 font-bold">{tool.nozzles?.[0]?.sprayAngleDeg ?? 65}°</span>
+                  </div>
+                  <input
+                    id="eoat-spray-angle-slider"
+                    type="range"
+                    min={30}
+                    max={120}
+                    step={5}
+                    value={tool.nozzles?.[0]?.sprayAngleDeg ?? 65}
+                    onChange={e => {
+                      const angle = Number(e.target.value);
+                      const currentNozzles = tool.nozzles || [];
+                      const updatedNozzles = currentNozzles.map(nz => ({
+                        ...nz,
+                        sprayAngleDeg: angle
+                      }));
+                      setTool({
+                        ...tool,
+                        nozzles: updatedNozzles
+                      });
+                    }}
+                    className="w-full accent-amber-400 cursor-pointer h-1 bg-slate-800 rounded mt-1"
+                  />
+                </div>
               </div>
             </div>
           </div>

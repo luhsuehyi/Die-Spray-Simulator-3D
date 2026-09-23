@@ -5,6 +5,10 @@ import { forwardKinematics } from '../../utils/kinematics';
 import { GP50_CAD_STATUS_EVENT, Gp50CadStatus } from '../../utils/gp50CadLoader';
 import {
   buildToyoMachine,
+  buildDcmDigitalTwin,
+  DcmKinematicsHandle,
+  createExtractorRobotRig,
+  ExtractorRobotRig,
   buildFactoryEquipment,
   buildRobotMountStructure,
   createRobotArmRig,
@@ -50,7 +54,19 @@ export const SimulationCanvas: React.FC = () => {
     showSprayCone,
     surfaceCells,
     isDemoMode,
-    demoPhase
+    demoPhase,
+
+    // Digital Twin Synchronized Cycle State
+    cycleConfig,
+    currentCyclePhase,
+    cyclePhaseProgress,
+    totalCycleProgress,
+    platenOpenPercent,
+    ejectorStrokeMm,
+    injectionFillPercent,
+    isSprayerInDaylight,
+    isExtractorInDaylight,
+    isPartGripped
   } = store;
 
   // Scene references
@@ -58,12 +74,16 @@ export const SimulationCanvas: React.FC = () => {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const machineGroupRef = useRef<THREE.Group | null>(null);
+  const movingAssemblyGroupRef = useRef<THREE.Group | null>(null);
+  const dcmKinematicsRef = useRef<DcmKinematicsHandle | null>(null);
   const factoryGroupRef = useRef<THREE.Group | null>(null);
   const dieMeshGroupRef = useRef<THREE.Group | null>(null);
   const robotGroupRef = useRef<THREE.Group | null>(null);
   const robotMountGroupRef = useRef<THREE.Group | null>(null);
   const robotArmGroupRef = useRef<THREE.Group | null>(null);
   const armRigRef = useRef<RobotArmRig | null>(null);
+  const extractorArmGroupRef = useRef<THREE.Group | null>(null);
+  const extractorRigRef = useRef<ExtractorRobotRig | null>(null);
   const castPartGroupRef = useRef<THREE.Group | null>(null);
   const sprayConeRef = useRef<THREE.Mesh | null>(null);
   const mistParticlesRef = useRef<THREE.Points | null>(null);
@@ -73,6 +93,51 @@ export const SimulationCanvas: React.FC = () => {
   const currentSprayDirRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, -1));
   const currentTcpPosRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
   const mistSeedsRef = useRef<MistSeed[]>([]);
+  const activeWorldNozzlesRef = useRef<Array<{
+    worldPos: THREE.Vector3;
+    worldDir: THREE.Vector3;
+    uVec: THREE.Vector3;
+    vVec: THREE.Vector3;
+    coneLength: number;
+    coneRadius: number;
+  }>>([]);
+
+  // Ref tracking latest cycle state for 60FPS render loop
+  const cycleStateRef = useRef({
+    currentCyclePhase,
+    cyclePhaseProgress,
+    platenOpenPercent,
+    platenOpenDistanceMm: cycleConfig.platenOpenDistanceMm || 650,
+    ejectorStrokeMm,
+    injectionFillPercent,
+    isSprayerInDaylight,
+    isExtractorInDaylight,
+    isPartGripped
+  });
+
+  useEffect(() => {
+    cycleStateRef.current = {
+      currentCyclePhase,
+      cyclePhaseProgress,
+      platenOpenPercent,
+      platenOpenDistanceMm: cycleConfig.platenOpenDistanceMm || 650,
+      ejectorStrokeMm,
+      injectionFillPercent,
+      isSprayerInDaylight,
+      isExtractorInDaylight,
+      isPartGripped
+    };
+  }, [
+    currentCyclePhase,
+    cyclePhaseProgress,
+    platenOpenPercent,
+    cycleConfig.platenOpenDistanceMm,
+    ejectorStrokeMm,
+    injectionFillPercent,
+    isSprayerInDaylight,
+    isExtractorInDaylight,
+    isPartGripped
+  ]);
 
   // Smooth camera orbit state with damping
   const isDraggingRef = useRef(false);
@@ -171,6 +236,14 @@ export const SimulationCanvas: React.FC = () => {
     const machineGroup = new THREE.Group();
     machineGroupRef.current = machineGroup;
     scene.add(machineGroup);
+
+    const movingAssemblyGroup = new THREE.Group();
+    movingAssemblyGroupRef.current = movingAssemblyGroup;
+    scene.add(movingAssemblyGroup);
+
+    const extractorArmGroup = new THREE.Group();
+    extractorArmGroupRef.current = extractorArmGroup;
+    scene.add(extractorArmGroup);
 
     const factoryGroup = new THREE.Group();
     factoryGroupRef.current = factoryGroup;
@@ -320,38 +393,73 @@ export const SimulationCanvas: React.FC = () => {
         cameraRef.current.lookAt(0, 100, 0);
       }
 
-      // Directional Spray Particles Animation
+      // Update DCM Digital Twin Kinematics (Moving platen Z, tie bars, ejector pins, molten cavity fill, shot sleeve plunger)
+      const cs = cycleStateRef.current;
+      if (dcmKinematicsRef.current) {
+        dcmKinematicsRef.current.updateKinematics(
+          cs.platenOpenPercent,
+          cs.platenOpenDistanceMm,
+          cs.ejectorStrokeMm,
+          cs.injectionFillPercent,
+          cs.currentCyclePhase
+        );
+      }
+
+      // Update Extractor Floor Robot Kinematics (coordinated entry, part gripping, extraction, quench drop)
+      if (extractorRigRef.current) {
+        extractorRigRef.current.updateExtractionKinematics(
+          cs.currentCyclePhase,
+          cs.cyclePhaseProgress,
+          cs.isPartGripped
+        );
+      }
+
+      // Directional Spray Particles Animation across active EOAT manifold nozzles
       if (mistParticlesRef.current && mistParticlesRef.current.visible) {
         const positions = mistParticlesRef.current.geometry.attributes.position.array as Float32Array;
         const seedsList = mistSeedsRef.current;
-        const tcp = currentTcpPosRef.current;
-        const dir = currentSprayDirRef.current;
+        const nozzles = activeWorldNozzlesRef.current;
 
-        // Orthogonal coordinate frame relative to sprayDir
-        if (Math.abs(dir.y) > 0.95) {
-          upRef.set(1, 0, 0);
+        if (nozzles && nozzles.length > 0) {
+          for (let i = 0; i < seedsList.length; i++) {
+            const s = seedsList[i];
+            s.t = (s.t + s.speed) % 1.0;
+
+            const nz = nozzles[i % nozzles.length];
+            const dist = s.t * nz.coneLength;
+            const spread = s.t * nz.coneRadius * s.radiusFrac;
+            const cosA = Math.cos(s.angle);
+            const sinA = Math.sin(s.angle);
+
+            positions[i * 3] = nz.worldPos.x + nz.worldDir.x * dist + (nz.uVec.x * cosA + nz.vVec.x * sinA) * spread;
+            positions[i * 3 + 1] = nz.worldPos.y + nz.worldDir.y * dist + (nz.uVec.y * cosA + nz.vVec.y * sinA) * spread;
+            positions[i * 3 + 2] = nz.worldPos.z + nz.worldDir.z * dist + (nz.uVec.z * cosA + nz.vVec.z * sinA) * spread;
+          }
         } else {
-          upRef.set(0, 1, 0);
-        }
-        uVec.crossVectors(dir, upRef).normalize();
-        vVec.crossVectors(dir, uVec).normalize();
+          const tcp = currentTcpPosRef.current;
+          const dir = currentSprayDirRef.current;
 
-        for (let i = 0; i < seedsList.length; i++) {
-          const s = seedsList[i];
-          s.t = (s.t + s.speed) % 1.0;
+          if (Math.abs(dir.y) > 0.95) {
+            upRef.set(1, 0, 0);
+          } else {
+            upRef.set(0, 1, 0);
+          }
+          uVec.crossVectors(dir, upRef).normalize();
+          vVec.crossVectors(dir, uVec).normalize();
 
-          const dist = s.t * coneLength;
-          const spread = s.t * coneRadius * s.radiusFrac;
-          const cosA = Math.cos(s.angle);
-          const sinA = Math.sin(s.angle);
+          for (let i = 0; i < seedsList.length; i++) {
+            const s = seedsList[i];
+            s.t = (s.t + s.speed) % 1.0;
 
-          const px = tcp.x + dir.x * dist + (uVec.x * cosA + vVec.x * sinA) * spread;
-          const py = tcp.y + dir.y * dist + (uVec.y * cosA + vVec.y * sinA) * spread;
-          const pz = tcp.z + dir.z * dist + (uVec.z * cosA + vVec.z * sinA) * spread;
+            const dist = s.t * coneLength;
+            const spread = s.t * coneRadius * s.radiusFrac;
+            const cosA = Math.cos(s.angle);
+            const sinA = Math.sin(s.angle);
 
-          positions[i * 3] = px;
-          positions[i * 3 + 1] = py;
-          positions[i * 3 + 2] = pz;
+            positions[i * 3] = tcp.x + dir.x * dist + (uVec.x * cosA + vVec.x * sinA) * spread;
+            positions[i * 3 + 1] = tcp.y + dir.y * dist + (uVec.y * cosA + vVec.y * sinA) * spread;
+            positions[i * 3 + 2] = tcp.z + dir.z * dist + (uVec.z * cosA + vVec.z * sinA) * spread;
+          }
         }
         mistParticlesRef.current.geometry.attributes.position.needsUpdate = true;
       }
@@ -437,12 +545,36 @@ export const SimulationCanvas: React.FC = () => {
     }
   }, [viewMode]);
 
-  // 3. Rebuild Toyo DCM Machine Model (Only on machine or die changes)
+  // 3. Rebuild DCM Digital Twin Machine Model (Only on machine or die changes)
   useEffect(() => {
-    if (machineGroupRef.current) {
-      buildToyoMachine(machineGroupRef.current, machine, die);
+    if (machineGroupRef.current && movingAssemblyGroupRef.current) {
+      if (dcmKinematicsRef.current) {
+        dcmKinematicsRef.current.dispose();
+        dcmKinematicsRef.current = null;
+      }
+      dcmKinematicsRef.current = buildDcmDigitalTwin(
+        machineGroupRef.current,
+        movingAssemblyGroupRef.current,
+        machine,
+        die
+      );
     }
   }, [machine, die]);
+
+  // 3B. Rebuild Extractor Floor Robot (Robot B)
+  useEffect(() => {
+    const extractorGroup = extractorArmGroupRef.current;
+    if (!extractorGroup) return;
+
+    if (extractorRigRef.current) {
+      extractorRigRef.current.dispose();
+      extractorRigRef.current = null;
+    }
+
+    if (factoryEquipment.showExtractorRobot || robotMountConfig.showDualRobots) {
+      extractorRigRef.current = createExtractorRobotRig(extractorGroup, machine, die);
+    }
+  }, [factoryEquipment.showExtractorRobot, robotMountConfig.showDualRobots, machine, die]);
 
   // 4. Rebuild Factory Automation Equipment
   useEffect(() => {
@@ -451,7 +583,7 @@ export const SimulationCanvas: React.FC = () => {
     }
   }, [factoryEquipment, machine, die]);
 
-  // 5. Render Die Cavity Geometry with Industrial H13 Tool Steel & EDM Cavity Differentiation
+  // 5. Render Die Cavity Geometry & Thermal Hot Spots
   useEffect(() => {
     const group = dieMeshGroupRef.current;
     if (!group) return;
@@ -459,44 +591,6 @@ export const SimulationCanvas: React.FC = () => {
     while (group.children.length > 0) {
       group.remove(group.children[0]);
     }
-
-    const { width, height, depth } = die.dimensions;
-
-    // Fixed Die Bolster Block (H13 Brushed Tool Steel)
-    const fixedDieBlock = new THREE.Mesh(
-      new THREE.BoxGeometry(width, height, depth),
-      MAT.dieSteelH13
-    );
-    fixedDieBlock.position.set(0, 0, die.fixedDieOffsetZ - depth / 2);
-    fixedDieBlock.castShadow = true;
-    fixedDieBlock.receiveShadow = true;
-    group.add(fixedDieBlock);
-
-    // Fixed Die Polished Parting Surface Bevel Plate
-    const fixedParting = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 0.96, height * 0.96, 6),
-      MAT.partingBevel
-    );
-    fixedParting.position.set(0, 0, die.fixedDieOffsetZ - 3);
-    group.add(fixedParting);
-
-    // Movable Die Bolster Block
-    const movableDieBlock = new THREE.Mesh(
-      new THREE.BoxGeometry(width, height, depth),
-      MAT.dieSteelH13
-    );
-    movableDieBlock.position.set(0, 0, die.movableDieOffsetZ + depth / 2);
-    movableDieBlock.castShadow = true;
-    movableDieBlock.receiveShadow = true;
-    group.add(movableDieBlock);
-
-    // Movable Die Polished Parting Surface Bevel Plate
-    const movParting = new THREE.Mesh(
-      new THREE.BoxGeometry(width * 0.96, height * 0.96, 6),
-      MAT.partingBevel
-    );
-    movParting.position.set(0, 0, die.movableDieOffsetZ + 3);
-    group.add(movParting);
 
     // Deep Recessed Mold Cavity Pockets (Dark Electrical Discharge Machining / EDM Texture)
     die.features.forEach(feat => {
@@ -643,66 +737,160 @@ export const SimulationCanvas: React.FC = () => {
     }
 
     // 2. Active Spray Cone & Mist Orientation
-    if (sprayConeRef.current && mistParticlesRef.current) {
-      const activeWp = waypoints[activeWaypointIndex];
-      const isSpraying = activeWp && (activeWp.action === 'LUBE_SPRAY' || activeWp.action === 'AIR_BLOW' || activeWp.action === 'LUBE_AND_AIR');
+    const activeWp = waypoints[activeWaypointIndex];
+    const isSpraying = !!(
+      currentCyclePhase === '04_SPRAY_LUBE' &&
+      isSprayerInDaylight &&
+      activeWp &&
+      (activeWp.action === 'LUBE_SPRAY' || activeWp.action === 'AIR_BLOW' || activeWp.action === 'LUBE_AND_AIR')
+    );
 
-      if (isSpraying && showSprayCone) {
-        sprayConeRef.current.visible = true;
+    // Trigger EOAT manifold multi-nozzle spray plumes directly on the robot rig
+    armRigRef.current?.updateSprayEmission?.({
+      isSpraying,
+      action: activeWp ? activeWp.action : 'WAIT',
+      targetFace: activeWp ? activeWp.targetFace : 'BOTH',
+      flowRateMlPerSec: activeWp?.flowRateMlPerSec,
+      showSprayCone
+    });
+
+    if (mistParticlesRef.current) {
+      if (isSpraying && showSprayCone && activeWp) {
         mistParticlesRef.current.visible = true;
 
-        // Position cone apex at TCP
-        sprayConeRef.current.position.set(tcp[0], tcp[1], tcp[2]);
-        currentTcpPosRef.current.set(tcp[0], tcp[1], tcp[2]);
-
-        // Compute physical nozzle pointing vector from TCP transform matrix
         const targetFace = activeWp.targetFace;
+        const rawNozzles = tool.nozzles || tool.eoatSpec?.nozzles || [];
 
-        let sprayDir = new THREE.Vector3(0, 0, targetFace === 'MOVABLE_DIE' ? 1 : -1);
-        if (fk.tcpMatrix && fk.tcpMatrix.length === 16) {
-          const m = fk.tcpMatrix;
-          // Local Z axis in world coordinates: (m[2], m[6], m[10])
-          sprayDir.set(m[2], m[6], m[10]);
+        // Compute rotation matrix from TCP matrix or default
+        const m = fk.tcpMatrix && fk.tcpMatrix.length === 16 ? fk.tcpMatrix : null;
+        const rotMat = m ? new THREE.Matrix4().fromArray(m) : new THREE.Matrix4().makeRotationFromEuler(
+          new THREE.Euler(
+            (currentRobotPose.tcpEulerDeg[0] || 0) * (Math.PI / 180),
+            (currentRobotPose.tcpEulerDeg[1] || 0) * (Math.PI / 180),
+            (currentRobotPose.tcpEulerDeg[2] || 0) * (Math.PI / 180),
+            'ZYX'
+          )
+        );
 
-          // Align active tool nozzle with target die face
-          if (targetFace === 'FIXED_DIE') {
-            if (sprayDir.z > 0) sprayDir.negate();
-          } else if (targetFace === 'MOVABLE_DIE') {
-            if (sprayDir.z < 0) sprayDir.negate();
+        // Filter nozzles for current target face
+        const eligible = rawNozzles.filter(nz => {
+          if (activeWp.action === 'AIR_BLOW' && nz.type === 'lube') return false;
+          if (activeWp.action === 'LUBE_SPRAY' && nz.type === 'air') return false;
+          return true;
+        });
+
+        const faceMatched = eligible.filter(nz => {
+          if (targetFace === 'FIXED_DIE') return nz.directionVector[2] < 0;
+          if (targetFace === 'MOVABLE_DIE') return nz.directionVector[2] > 0;
+          return true;
+        });
+
+        const nozzlesToUse = faceMatched.length > 0 ? faceMatched : eligible;
+
+        const worldNozzles: Array<{
+          worldPos: THREE.Vector3;
+          worldDir: THREE.Vector3;
+          uVec: THREE.Vector3;
+          vVec: THREE.Vector3;
+          coneLength: number;
+          coneRadius: number;
+        }> = [];
+
+        const isMicro = tool.eoatType === 'MICRO_DOSING' || tool.sprayHeadType === 'MICRO_DOSING';
+        const defaultLen = isMicro ? 150 : 230;
+
+        if (nozzlesToUse.length > 0) {
+          const rotOnly = new THREE.Matrix3().setFromMatrix4(rotMat);
+          nozzlesToUse.forEach(nz => {
+            const localPos = new THREE.Vector3(nz.offsetMm[0], nz.offsetMm[1], nz.offsetMm[2]);
+            const worldPos = localPos.applyMatrix4(rotMat).add(new THREE.Vector3(tcp[0], tcp[1], tcp[2]));
+
+            const localDir = new THREE.Vector3(nz.directionVector[0], nz.directionVector[1], nz.directionVector[2]).normalize();
+            const worldDir = localDir.applyMatrix3(rotOnly).normalize();
+
+            const halfAngleRad = ((nz.sprayAngleDeg || 60) / 2) * (Math.PI / 180);
+            const cLen = defaultLen;
+            const cRad = Math.max(15, Math.tan(halfAngleRad) * cLen);
+
+            const up = Math.abs(worldDir.y) > 0.95 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+            const u = new THREE.Vector3().crossVectors(worldDir, up).normalize();
+            const v = new THREE.Vector3().crossVectors(worldDir, u).normalize();
+
+            worldNozzles.push({
+              worldPos,
+              worldDir,
+              uVec: u,
+              vVec: v,
+              coneLength: cLen,
+              coneRadius: cRad
+            });
+          });
+        }
+
+        // Fallback if no manifold nozzles
+        if (worldNozzles.length === 0) {
+          let sprayDir = new THREE.Vector3(0, 0, targetFace === 'MOVABLE_DIE' ? 1 : -1);
+          if (m) {
+            sprayDir.set(m[2], m[6], m[10]);
+            if (targetFace === 'FIXED_DIE' && sprayDir.z > 0) sprayDir.negate();
+            if (targetFace === 'MOVABLE_DIE' && sprayDir.z < 0) sprayDir.negate();
+          }
+          sprayDir.normalize();
+
+          const up = Math.abs(sprayDir.y) > 0.95 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+          const u = new THREE.Vector3().crossVectors(sprayDir, up).normalize();
+          const v = new THREE.Vector3().crossVectors(sprayDir, u).normalize();
+
+          worldNozzles.push({
+            worldPos: new THREE.Vector3(tcp[0], tcp[1], tcp[2]),
+            worldDir: sprayDir,
+            uVec: u,
+            vVec: v,
+            coneLength: 260,
+            coneRadius: 90
+          });
+        }
+
+        activeWorldNozzlesRef.current = worldNozzles;
+        currentTcpPosRef.current.set(tcp[0], tcp[1], tcp[2]);
+        if (worldNozzles.length > 0) {
+          currentSprayDirRef.current.copy(worldNozzles[0].worldDir);
+        }
+
+        // Mist particle color
+        const partMat = mistParticlesRef.current.material as THREE.PointsMaterial;
+        if (activeWp.action === 'AIR_BLOW') {
+          partMat.color.setHex(0xf0f9ff);
+          partMat.size = 3.5;
+        } else if (isMicro) {
+          partMat.color.setHex(0x38bdf8);
+          partMat.size = 2.8;
+        } else {
+          partMat.color.setHex(0x7dd3fc);
+          partMat.size = 4.5;
+        }
+
+        // Standalone central spray cone only visible if arm rig has no built-in plumes
+        if (sprayConeRef.current) {
+          if (!armRigRef.current?.sprayEmitterGroup) {
+            sprayConeRef.current.visible = true;
+            sprayConeRef.current.position.set(tcp[0], tcp[1], tcp[2]);
+            const targetLook = new THREE.Vector3(
+              tcp[0] + worldNozzles[0].worldDir.x * 260,
+              tcp[1] + worldNozzles[0].worldDir.y * 260,
+              tcp[2] + worldNozzles[0].worldDir.z * 260
+            );
+            sprayConeRef.current.lookAt(targetLook);
+          } else {
+            sprayConeRef.current.visible = false;
           }
         }
-
-        // Normalize direction vector
-        if (sprayDir.lengthSq() > 0.001) {
-          sprayDir.normalize();
-        } else {
-          sprayDir.set(0, 0, targetFace === 'MOVABLE_DIE' ? 1 : -1);
-        }
-
-        currentSprayDirRef.current.copy(sprayDir);
-
-        // Aim the spray cone: apex stays at TCP, cone expands along sprayDir
-        const targetLook = new THREE.Vector3(
-          tcp[0] + sprayDir.x * 260,
-          tcp[1] + sprayDir.y * 260,
-          tcp[2] + sprayDir.z * 260
-        );
-        sprayConeRef.current.lookAt(targetLook);
-
-        // Distinct Industrial Material Colors for Spray vs Air
-        const coneMat = sprayConeRef.current.material as THREE.MeshBasicMaterial;
-        if (activeWp.action === 'AIR_BLOW') {
-          coneMat.color.setHex(0xe0f2fe);
-          coneMat.opacity = 0.28;
-          (mistParticlesRef.current.material as THREE.PointsMaterial).color.setHex(0xf0f9ff);
-        } else {
-          coneMat.color.setHex(0x38bdf8);
-          coneMat.opacity = 0.42;
-          (mistParticlesRef.current.material as THREE.PointsMaterial).color.setHex(0x7dd3fc);
-        }
       } else {
-        sprayConeRef.current.visible = false;
         mistParticlesRef.current.visible = false;
+        activeWorldNozzlesRef.current = [];
+        if (sprayConeRef.current) {
+          sprayConeRef.current.visible = false;
+        }
       }
     }
   }, [

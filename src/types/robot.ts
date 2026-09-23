@@ -110,6 +110,32 @@ export interface SprayNozzleConfig {
   swivelAngleDeg?: number;
 }
 
+export interface FluidAirSupplyConfig {
+  lubePressure: string;
+  airPressure: string;
+  lubeFlowRate: string;
+  airConsumptionNlPerMin: number;
+  connectionInterfaces: string;
+  lubricantPressureBar?: number;
+  airPressureBar?: number;
+  antiDripSuckBack?: boolean;
+  airKnifeIntegrated?: boolean;
+}
+
+export interface ValveControlConfig {
+  valveType: 'solenoid_pwm' | 'pneumatic_pinch' | 'proportional_needle' | 'piezo_pulse';
+  responseFrequencyHz?: number;
+  antiDripSuckBack: boolean;
+  individualNozzleControl: boolean;
+  independentAirLubeSequencing: boolean;
+  zones?: Array<{
+    id: string;
+    name: string;
+    nozzleIds: string[];
+    targetFace: 'FIXED_DIE' | 'MOVABLE_DIE' | 'BOTH';
+  }>;
+}
+
 export interface EOATSpec {
   id: string;
   type: EoatType;
@@ -142,13 +168,8 @@ export interface EOATSpec {
     airMin: number;
     airMax: number;
   };
-  fluidAirSupply: {
-    lubePressure: string;
-    airPressure: string;
-    lubeFlowRate: string;
-    airConsumptionNlPerMin: number;
-    connectionInterfaces: string;
-  };
+  fluidAirSupply: FluidAirSupplyConfig;
+  valveControls?: ValveControlConfig;
   cycleTimeAdvantageSec: number;
   cycleTimeNote: string;
   costTier: 'STANDARD' | 'MID_RANGE' | 'PREMIUM' | 'HIGH_END';
@@ -184,6 +205,8 @@ export interface ToolCenterPoint {
   };
   mountingInterface?: string;
   nozzles?: SprayNozzleConfig[];
+  fluidAirSupply?: FluidAirSupplyConfig;
+  valveControls?: ValveControlConfig;
   microSpraySettings?: {
     fineSpray: boolean;
     sprayWidthMm: number;
@@ -194,6 +217,25 @@ export interface ToolCenterPoint {
     airPressureBar: number;
     sprayWidthMm: number;
   };
+}
+
+export type CellCyclePhase =
+  | '01_MOLD_CLOSE'
+  | '02_INJECTION'
+  | '03_MOLD_OPEN'
+  | '04_SPRAY_LUBE'
+  | '05_PART_EXTRACTION'
+  | '06_CYCLE_RESET';
+
+export interface CellCycleConfig {
+  moldCloseTimeSec: number;
+  injectionDwellTimeSec: number;
+  moldOpenTimeSec: number;
+  sprayLubeTimeSec: number;
+  partExtractionTimeSec: number;
+  cycleResetTimeSec: number;
+  platenOpenDistanceMm: number;
+  clampingForceTons: number;
 }
 
 export type HpdcSequenceState =
