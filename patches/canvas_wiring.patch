@@ -49,3 +49,181 @@
      renderer.toneMapping = THREE.ACESFilmicToneMapping;
      renderer.toneMappingExposure = 1.1;
      rendererRef.current = renderer;
+@@ -180,9 +195,10 @@
+     // Primary High-Bay Key Light with crisp contact shadow
+     const keyLight = new THREE.DirectionalLight(0xfff8ee, 1.45);
+     keyLight.position.set(2000, 3200, 2200);
+-    keyLight.castShadow = true;
+-    keyLight.shadow.mapSize.width = 2048;
+-    keyLight.shadow.mapSize.height = 2048;
++    keyLight.castShadow = q0.shadowsEnabled;
++    keyLight.shadow.mapSize.width = q0.shadowMapSize;
++    keyLight.shadow.mapSize.height = q0.shadowMapSize;
++    keyLightRef.current = keyLight;
+     keyLight.shadow.camera.near = 100;
+     keyLight.shadow.camera.far = 9000;
+     keyLight.shadow.bias = -0.0007;
+@@ -230,14 +246,16 @@
+     mainGrid.position.y = floorY + 1;
+     scene.add(mainGrid);
+ 
+     const subGrid = new THREE.GridHelper(2400, 48, 0x334155, 0x1e293b);
+     subGrid.position.y = floorY + 2;
++    subGrid.visible = q0.showSubGrid;
++    subGridRef.current = subGrid;
+     scene.add(subGrid);
+ 
+     // Structural Scene Groups
+@@ -280,7 +298,7 @@
+     scene.add(sprayCone);
+ 
+     // Directional Mist Particles streaming from TCP along spray cone
+-    const particleCount = 240;
++    const particleCount = q0.mistParticleCount;
+     const partGeo = new THREE.BufferGeometry();
+     const partPos = new Float32Array(particleCount * 3);
+     const seeds: MistSeed[] = [];
+@@ -320,6 +338,7 @@
+ 
+       cameraTargetOrbitRef.current.theta -= dx * 0.0055;
+       cameraTargetOrbitRef.current.phi = Math.max(0.08, Math.min(Math.PI / 2 - 0.02, cameraTargetOrbitRef.current.phi - dy * 0.0055));
++      needsRenderRef.current = true;
+     };
+ 
+     const onMouseUp = () => {
+@@ -328,6 +347,7 @@
+ 
+     const onWheel = (e: WheelEvent) => {
+       e.preventDefault();
+       cameraTargetOrbitRef.current.radius = Math.max(500, Math.min(6500, cameraTargetOrbitRef.current.radius + e.deltaY * 1.5));
++      needsRenderRef.current = true;
+     };
+ 
+     container.addEventListener('mousedown', onMouseDown);
+@@ -350,8 +370,16 @@
+         cur.theta += (tgt.theta - cur.theta) * 0.09;
+         cur.phi += (tgt.phi - cur.phi) * 0.09;
+         cur.radius += (tgt.radius - cur.radius) * 0.09;
+ 
+-        const cx = cur.radius * Math.sin(cur.phi) * Math.sin(cur.theta);
+-        const cy = cur.radius * Math.cos(cur.phi);
+-        const cz = cur.radius * Math.sin(cur.phi) * Math.cos(cur.theta);
+-        cameraRef.current.position.set(cx, cy, cz);
+-        cameraRef.current.lookAt(0, 100, 0);
++        const cx = cur.radius * Math.sin(cur.phi) * Math.sin(cur.theta);
++        const cy = cur.radius * Math.cos(cur.phi);
++        const cz = cur.radius * Math.sin(cur.phi) * Math.cos(cur.theta);
++        const lt = cameraLookAtRef.current;
++        const ltt = cameraLookAtTargetRef.current;
++        lt.x += (ltt.x - lt.x) * 0.09;
++        lt.y += (ltt.y - lt.y) * 0.09;
++        lt.z += (ltt.z - lt.z) * 0.09;
++        cameraRef.current.position.set(cx + lt.x, cy + lt.y, cz + lt.z);
++        cameraRef.current.lookAt(lt.x, lt.y, lt.z);
++        needsRenderRef.current = true;
+       }
+ 
+       // Update DCM Digital Twin Kinematics
+@@ -420,12 +448,25 @@
+         mistParticlesRef.current.geometry.attributes.position.needsUpdate = true;
+       }
+ 
++      if (mistParticlesRef.current && mistParticlesRef.current.visible) {
++        needsRenderRef.current = true;
++      }
++
+       if (rendererRef.current && sceneRef.current && cameraRef.current) {
+-        rendererRef.current.render(sceneRef.current, cameraRef.current);
++        const q = getRenderQualitySettings();
++        if (!q.idleSkipEnabled || needsRenderRef.current) {
++          rendererRef.current.render(sceneRef.current, cameraRef.current);
++          needsRenderRef.current = false;
++        }
+       }
+     };
+     animate();
+ 
++    const unsubQuality = subscribeRenderQuality(() => {
++      if (!rendererRef.current) return;
++      applyRendererQuality(rendererRef.current, THREE, keyLightRef.current);
++      const q = getRenderQualitySettings();
++      if (subGridRef.current) subGridRef.current.visible = q.showSubGrid;
++      needsRenderRef.current = true;
++    });
++
+     return () => {
++      unsubQuality();
+       cancelAnimationFrame(animId);
+       resizeObserver.disconnect();
+       container.removeEventListener('mousedown', onMouseDown);
+@@ -480,30 +521,12 @@
+   }, [cameraPreset, machine.platenWidth]);
+ 
+-  // Demo Presentation Mode: Smooth Cinematic Camera Shots
++  // Demo: die-cavity framed cinematic shots
+   useEffect(() => {
+     if (!isDemoMode || !cameraRef.current) return;
+-    const targetRadius = Math.max(2000, machine.platenWidth * 2.2);
+-    switch (demoPhase) {
+-      case 0:
+-        cameraTargetOrbitRef.current = { theta: Math.PI / 3.8, phi: Math.PI / 3.1, radius: targetRadius * 1.35 };
+-        break;
+-      case 1:
+-        cameraTargetOrbitRef.current = { theta: Math.PI / 3.2, phi: Math.PI / 2.8, radius: 1550 };
+-        break;
+-      case 2:
+-        cameraTargetOrbitRef.current = { theta: Math.PI * 0.12, phi: Math.PI / 2.15, radius: 900 };
+-        break;
+-      case 3:
+-        cameraTargetOrbitRef.current = { theta: -0.05, phi: Math.PI / 2.08, radius: 1180 };
+-        break;
+-      case 4:
+-        cameraTargetOrbitRef.current = { theta: Math.PI * 0.42, phi: Math.PI / 2.9, radius: 1650 };
+-        break;
+-      case 5:
+-        cameraTargetOrbitRef.current = { theta: Math.PI * 0.72, phi: Math.PI / 3.4, radius: targetRadius * 1.2 };
+-        break;
+-    }
++    const shot = getDemoCameraShot(demoPhase, machine.platenWidth);
++    cameraTargetOrbitRef.current = { theta: shot.theta, phi: shot.phi, radius: shot.radius };
++    cameraLookAtTargetRef.current = { ...shot.lookAt };
++    needsRenderRef.current = true;
+   }, [isDemoMode, demoPhase, machine.platenWidth]);
+ 
+@@ -1037,12 +1060,28 @@
+   }, [waypoints, selectedWaypointId, activeWaypointIndex]);
+ 
++  useEffect(() => {
++    needsRenderRef.current = true;
++  }, [
++    isDemoMode,
++    demoPhase,
++    currentCyclePhase,
++    cyclePhaseProgress,
++    platenOpenPercent,
++    ejectorStrokeMm,
++    injectionFillPercent,
++    cameraPreset,
++    viewMode,
++    showSprayCone,
++    currentRobotPose
++  ]);
++
+   return (
+     <div
+-      ref={containerRef}
+       id="simulation-3d-canvas-container"
+       className="relative w-full h-full cursor-grab active:cursor-grabbing select-none overflow-hidden"
+     >
++      <div ref={containerRef} className="absolute inset-0" />
+       {store.robot.id === 'yaskawa-gp50' && cadStatus.status !== 'ready' && (
+         <div
+           className={`absolute left-3 top-3 z-20 max-w-[520px] rounded-md px-3 py-2 text-xs font-mono pointer-events-none ${
+@@ -1054,6 +1093,7 @@
+             : 'Loading Yaskawa GP50 CAD model…'}
+         </div>
+       )}
++      <RenderQualityControl />
+     </div>
+   );
+ };
