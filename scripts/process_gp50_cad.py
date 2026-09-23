@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Generate the runtime GP50 CAD manifest used by the simulator."""
+"""Generate/update the runtime GP50 CAD manifest used by the simulator."""
 
 import json
 from pathlib import Path
 
 MANIFEST_PATH = Path(__file__).resolve().parents[1] / "public" / "models" / "gp50" / "gp50_manifest.json"
 
-manifest = {
+manifest = {}
+if MANIFEST_PATH.exists():
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+manifest.update({
     "robotModel": "Yaskawa GP50",
     "pivots": {
         "J1": [0.0, 0.0, 0.0],
@@ -30,7 +34,7 @@ manifest = {
         "AccentSilver": "#A5ACAF",
         "DarkGrey": "#2B3038",
     },
-}
+})
 
 MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
 MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
