@@ -1,2 +1,175 @@
 @import "tailwindcss";
 @source not "../public";
+
+/* =============================================================================
+   TOVONN AI DIE SPRAY 3D — Design Tokens & Visual Enrichment Layer
+   Phase 1: Atmosphere, glassmorphism, cinematic demo polish
+   ============================================================================= */
+
+:root {
+  /* Core industrial palette */
+  --bg-deep: #0b0f19;
+  --bg-panel: #0f172a;
+  --bg-elevated: #1e293b;
+  --border-subtle: rgba(51, 65, 85, 0.7);
+  --border-accent: rgba(56, 189, 248, 0.35);
+
+  /* Accent spectrum */
+  --accent-cyan: #22d3ee;
+  --accent-blue: #3b82f6;
+  --accent-emerald: #10b981;
+  --accent-amber: #f59e0b;
+  --accent-rose: #f43f5e;
+
+  /* Text */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  /* Glass */
+  --glass-bg: rgba(15, 23, 42, 0.78);
+  --glass-bg-strong: rgba(2, 6, 23, 0.88);
+  --glass-border: rgba(51, 65, 85, 0.65);
+  --glass-blur: 12px;
+
+  /* Shadows */
+  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-glow-cyan: 0 0 20px rgba(34, 211, 238, 0.15);
+  --shadow-glow-blue: 0 0 24px rgba(59, 130, 246, 0.2);
+}
+
+/* Smooth scrollbar for dark UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
+}
+
+/* Glass panel utility */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.glass-panel-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Cinematic demo phase title animation */
+@keyframes demo-title-in {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes demo-title-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@keyframes glow-breathe {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(34, 211, 238, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(34, 211, 238, 0.45);
+  }
+}
+
+.demo-phase-title {
+  animation: demo-title-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.demo-phase-title.exiting {
+  animation: demo-title-out 0.35s ease-in forwards;
+}
+
+.live-indicator {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.glow-cyan {
+  animation: glow-breathe 3s ease-in-out infinite;
+}
+
+/* Subtle range input polish */
+input[type="range"].demo-timeline {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    var(--accent-blue) 0%,
+    var(--accent-cyan) 100%
+  );
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"].demo-timeline::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent-blue);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"].demo-timeline::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+/* Soft vignette for demo mode (applied via overlay) */
+.demo-vignette {
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 45%,
+    transparent 40%,
+    rgba(2, 6, 23, 0.45) 100%
+  );
+}
+
+/* Phase progress bar fill */
+.phase-progress-fill {
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
