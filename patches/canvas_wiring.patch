@@ -1,0 +1,51 @@
+--- a/src/components/viewport/SimulationCanvas.tsx
++++ b/src/components/viewport/SimulationCanvas.tsx
+@@ -16,6 +16,14 @@
+   MAT
+ } from './cellSceneBuilder';
+ import { buildCastPartMesh } from './castPartSceneBuilder';
++import { RenderQualityControl } from './RenderQualityControl';
++import {
++  initRenderQualityFromStorage,
++  getRenderQualitySettings,
++  subscribeRenderQuality,
++  applyRendererQuality
++} from '../../utils/renderQuality';
++import { getDemoCameraShot } from '../../utils/demoCameraPresets';
+ 
+ interface MistSeed {
+   t: number;
+@@ -144,6 +152,11 @@
+   const mousePrevRef = useRef({ x: 0, y: 0 });
+   const cameraOrbitRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3.2, radius: 2400 });
+   const cameraTargetOrbitRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 3.2, radius: 2400 });
++  const cameraLookAtRef = useRef({ x: 0, y: 80, z: 0 });
++  const cameraLookAtTargetRef = useRef({ x: 0, y: 80, z: 0 });
++  const needsRenderRef = useRef(true);
++  const keyLightRef = useRef<THREE.DirectionalLight | null>(null);
++  const subGridRef = useRef<THREE.GridHelper | null>(null);
+ 
+   // 1. Scene Initialization
+   useEffect(() => {
+@@ -158,15 +171,17 @@
+     const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 10, 25000);
+     cameraRef.current = camera;
+ 
++    initRenderQualityFromStorage();
++    const q0 = getRenderQualitySettings();
+     const renderer = new THREE.WebGLRenderer({
+-      antialias: true,
++      antialias: q0.antialias,
+       alpha: false,
+       powerPreference: 'high-performance'
+     });
+     renderer.setSize(container.clientWidth, container.clientHeight);
+-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+-    renderer.shadowMap.enabled = true;
+-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
++    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q0.maxPixelRatio));
++    renderer.shadowMap.enabled = q0.shadowsEnabled;
++    renderer.shadowMap.type = q0.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+     renderer.toneMappingExposure = 1.1;
+     rendererRef.current = renderer;
