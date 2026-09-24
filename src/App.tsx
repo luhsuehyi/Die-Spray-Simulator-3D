@@ -135,12 +135,12 @@ export default function App() {
                       {use2DPlanView ? (
                         <>
                           <Box className="w-3.5 h-3.5 text-blue-400" />
-                          <span>3D Digital Twin</span>
+                          <span>{t.digitalTwin3D}</span>
                         </>
                       ) : (
                         <>
                           <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>2D Layout Plan</span>
+                          <span>{t.layoutPlan2D}</span>
                         </>
                       )}
                     </button>
