@@ -40,12 +40,32 @@ export function runCollisionAudit(
   ];
 
   const resolvedJoints = resolveWaypointJoints(waypoints, robotSpec, undefined, mountConfig);
+  // Audit the continuous path, not only programmed waypoints. A segment can
+  // pass through a tie bar even when both endpoints are clear.
   for (let wpi = 0; wpi < waypoints.length; wpi++) {
-    const wp = waypoints[wpi];
-    const fk = forwardKinematics(resolvedJoints[wpi], robotSpec, undefined, mountConfig);
-    const tcp = [wp.x, wp.y, wp.z] as [number, number, number];
-    const wrist = fk.jointPositions.wristYaw;
-    const elbow = fk.jointPositions.elbow;
+    const sampleCount = wpi === 0 ? 1 : 6;
+    for (let si = 0; si < sampleCount; si++) {
+      const t = sampleCount === 1 ? 1 : si / sampleCount;
+      const prevWp = wpi === 0 ? waypoints[wpi] : waypoints[wpi - 1];
+      const curWp = waypoints[wpi];
+      const lerp = (a: number, b: number) => a + (b - a) * t;
+      const wp = {
+        ...curWp,
+        x: lerp(prevWp.x, curWp.x),
+        y: lerp(prevWp.y, curWp.y),
+        z: lerp(prevWp.z, curWp.z),
+        rx: lerp(prevWp.rx, curWp.rx),
+        ry: lerp(prevWp.ry, curWp.ry),
+        rz: lerp(prevWp.rz, curWp.rz)
+      };
+      const jointSample = resolvedJoints[wpi].map((q, qi) => {
+        const prevQ = wpi === 0 ? q : resolvedJoints[wpi - 1][qi];
+        return lerp(prevQ, q);
+      });
+      const fk = forwardKinematics(jointSample, robotSpec, undefined, mountConfig);
+      const tcp = [wp.x, wp.y, wp.z] as [number, number, number];
+      const wrist = fk.jointPositions.wristYaw;
+      const elbow = fk.jointPositions.elbow;
 
     const criticalPoints: { name: string; pos: [number, number, number]; radius: number }[] = [
       { name: toolName, pos: tcp, radius: toolClearanceRadius },
@@ -155,6 +175,7 @@ export function runCollisionAudit(
             severity: 'warning'
           });
         }
+      }
       }
     }
   }
