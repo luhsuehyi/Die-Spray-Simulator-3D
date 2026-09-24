@@ -26,8 +26,8 @@ export const DEFAULT_CYCLE_CONFIG: CellCycleConfig = {
   sprayLubeTimeSec: 6.0,
   partExtractionTimeSec: 4.5,
   cycleResetTimeSec: 1.0,
-  platenOpenDistanceMm: 850,
-  clampingForceTons: 850
+  platenOpenDistanceMm: 650,
+  clampingForceTons: 650
 };
 import { DieModel, SurfaceCell } from '../types/die';
 import { SprayPhysicsParams, SprayCoverageStats, CollisionAuditResult } from '../types/spray';
@@ -570,8 +570,20 @@ export function useSimulationStore(): SimulationStore {
     } else if (part.category === 'telecom_5g') {
       matchedKn = 6500; // 650T
     }
-    const matchedMachine = TOYO_DCM_FAMILY.find(m => m.clampingForceKn === matchedKn) || TOYO_DCM_FAMILY[6];
+    // Map the requested tonnage to the closest available Toyo model instead of
+    // falling back to an unrelated machine when a sample asks for an unsupported size.
+    const requestedTons = matchedKn / 10;
+    const matchedMachine = TOYO_DCM_FAMILY.reduce((best, candidate) =>
+      Math.abs(candidate.clampingForceTons - requestedTons) < Math.abs(best.clampingForceTons - requestedTons)
+        ? candidate
+        : best
+    );
     storeState.machine = matchedMachine;
+    storeState.cycleConfig = {
+      ...storeState.cycleConfig,
+      clampingForceTons: matchedMachine.clampingForceTons,
+      platenOpenDistanceMm: Math.min(storeState.cycleConfig.platenOpenDistanceMm, matchedMachine.maxDieOpeningStroke)
+    };
 
     storeState.aiPlanningProgress = 35;
     storeState.aiPlanningStepText = '2/6 Evaluating sprayable surfaces, cavity pockets & thermal cooling zones...';
@@ -768,6 +780,11 @@ export function useSimulationStore(): SimulationStore {
       lateralMm: newOffset[0],
       heightMm: newOffset[1],
       distanceMm: newOffset[2]
+    };
+    storeState.cycleConfig = {
+      ...storeState.cycleConfig,
+      clampingForceTons: target.clampingForceTons,
+      platenOpenDistanceMm: Math.min(storeState.cycleConfig.platenOpenDistanceMm, target.maxDieOpeningStroke)
     };
     emitChange();
   }, []);
