@@ -225,6 +225,84 @@ export function buildCastPartMesh(
       break;
     }
 
+    case 'generic_hpdc': {
+      // Parametric representative geometry for the sample library.
+      // It is intentionally generic: dimensions and feature metadata remain the source of truth.
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(dim.lengthMm * 0.86, dim.widthMm * 0.82, dim.heightMm * 0.72),
+        AL_CAST_MAT
+      );
+      body.castShadow = true;
+      body.receiveShadow = true;
+      partRoot.add(body);
+
+      const topFace = new THREE.Mesh(
+        new THREE.BoxGeometry(dim.lengthMm * 0.92, dim.widthMm * 0.88, Math.max(10, dim.heightMm * 0.08)),
+        GASKET_FACE_MAT
+      );
+      topFace.position.z = dim.heightMm * 0.34;
+      partRoot.add(topFace);
+
+      part.features.forEach(feature => {
+        const [fx, fy, fz] = feature.position;
+        const [fw, fh, fd] = feature.dimensions;
+
+        if (feature.category === 'boss') {
+          const boss = new THREE.Mesh(
+            new THREE.CylinderGeometry(Math.max(10, Math.min(fw, fh) * 0.42), Math.max(12, Math.min(fw, fh) * 0.48), Math.max(15, fd), 20),
+            AL_CAST_MAT
+          );
+          boss.rotation.x = Math.PI / 2;
+          boss.position.set(fx, fy, fz);
+          partRoot.add(boss);
+        } else if (feature.category === 'rib') {
+          const rib = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(8, fw), Math.max(8, fh), Math.max(8, fd * 0.55)),
+            AL_CAST_MAT
+          );
+          rib.position.set(fx, fy, fz);
+          partRoot.add(rib);
+        } else if (feature.category === 'deep_pocket') {
+          const pocket = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(20, fw * 0.72), Math.max(20, fh * 0.72), Math.max(10, Math.min(fd, dim.heightMm * 0.55))),
+            new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.4 })
+          );
+          pocket.position.set(fx, fy, fz - Math.max(5, fd * 0.18));
+          partRoot.add(pocket);
+        } else if (feature.category === 'through_hole') {
+          const hole = new THREE.Mesh(
+            new THREE.CylinderGeometry(Math.max(8, Math.min(fw, fh) * 0.38), Math.max(8, Math.min(fw, fh) * 0.38), Math.max(20, fd), 20),
+            new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.3, roughness: 0.8 })
+          );
+          hole.rotation.x = Math.PI / 2;
+          hole.position.set(fx, fy, fz);
+          partRoot.add(hole);
+        } else if (feature.category === 'planar_surface') {
+          const face = new THREE.Mesh(
+            new THREE.BoxGeometry(Math.max(20, fw), Math.max(20, fh), Math.max(8, fd * 0.35)),
+            GASKET_FACE_MAT
+          );
+          face.position.set(fx, fy, fz);
+          partRoot.add(face);
+        }
+      });
+
+      // Generic sacrificial runner/biscuit is always visible when the preset declares one.
+      const runner = part.features.find(f => f.category === 'runner_biscuit');
+      if (runner) {
+        const [rx, ry, rz] = runner.position;
+        const [rw, rh, rd] = runner.dimensions;
+        const biscuit = new THREE.Mesh(
+          new THREE.BoxGeometry(Math.max(25, rw), Math.max(20, rh), Math.max(20, rd)),
+          RUNNER_MAT
+        );
+        biscuit.position.set(rx, ry, rz);
+        biscuit.castShadow = true;
+        partRoot.add(biscuit);
+      }
+      break;
+    }
+
     case 'battery_tray': {
       // Large Planar Floor Tray
       const trayFloor = new THREE.Mesh(
