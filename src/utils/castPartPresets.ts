@@ -4,6 +4,303 @@
 
 import { CastPartModel, GripCandidate, GeometricFeature, ManufacturingProcessStep } from '../types/castPart';
 
+
+/**
+ * Representative Taiwanese HPDC sample library.
+ * Generic engineering examples only; not customer-specific parts.
+ * Tonnages use only the Toyo BD-V7EX family modeled by this application.
+ */
+const TAIWAN_HPDC_SAMPLE_PARTS: CastPartModel[] = [
+  {
+    id: 'part-scooter-cvt-case', name: 'Scooter CVT / Transmission Case', taiwaneseIndustryName: '速克達 CVT 傳動箱體',
+    alloyGrade: 'ADC12', category: 'automotive', recommendedMachineTonnage: 250, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 360, widthMm: 300, heightMm: 125, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 5.5, volumeCm3: 780, estimatedMassKg: 2.11, shotWeightWithRunnerKg: 2.85 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'cvt-pocket', name: 'Primary Belt / Gear Cavity', category: 'deep_pocket', position: [20, 0, -20], dimensions: [250, 210, 90], draftAngleDeg: 2, isCosmetic: false, notes: 'Deep cavity around rotating transmission components.' },
+      { id: 'cvt-rib', name: 'Perimeter Reinforcement Ribs', category: 'rib', position: [0, -80, 0], dimensions: [280, 70, 30], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Typical thin-wall scooter transmission reinforcement.' },
+      { id: 'cvt-bearing', name: 'Bearing Boss', category: 'boss', position: [100, 35, 10], dimensions: [90, 90, 65], draftAngleDeg: 2, isCosmetic: false, notes: 'Structural boss suitable for contour jaws.' },
+      { id: 'cvt-runner', name: 'Runner / Biscuit', category: 'runner_biscuit', position: [0, -170, -15], dimensions: [100, 55, 65], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial extraction grip area.' }
+    ],
+    gripCandidates: [
+      { id: 'cvt-grip-runner', label: 'A', name: 'Runner / Biscuit Clamp', location: [0, -170, 15], approachDirection: [0, 1, 0], gripWidthMm: 70, recommendedEoatType: 'runner_clamp', stabilityScore: 96, clearanceScore: 94, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Sacrificial runner grip.', mitigation: 'Verify runner break-off load.' },
+      { id: 'cvt-grip-boss', label: 'B', name: 'Bearing Boss Contour Jaw', location: [100, 35, 25], approachDirection: [1, 0, 0], gripWidthMm: 85, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 86, clearanceScore: 82, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Structural boss grip.', mitigation: 'Use compliant jaw pads.' }
+    ],
+    suggestedProcess: [
+      { id: 'cvt-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-250V7EX', cycleTimeSec: 9.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative ADC12 scooter transmission casting.', equipmentRequired: 'Toyo BD-250V7EX + aluminum dosing furnace' },
+      { id: 'cvt-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner clamp extraction with die-clear interlock.', equipmentRequired: '50 kg class 6-axis robot' },
+      { id: 'cvt-trim', order: 3, name: 'Trim / Degate', category: 'trimming', stationName: 'Trim Press', cycleTimeSec: 3, enabled: true, confidence: 'MEDIUM', factType: 'ENGINEER_CONFIRMATION_REQUIRED', description: 'Remove runner and parting flash.', equipmentRequired: '15T hydraulic trim press' }
+    ]
+  },
+  {
+    id: 'part-e-bike-drive-unit', name: 'E-Bike Drive Unit Housing', taiwaneseIndustryName: '電動自行車中置馬達驅動箱體',
+    alloyGrade: 'ADC12 / AlSi9Cu3', category: 'ev_powertrain', recommendedMachineTonnage: 250, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 310, widthMm: 260, heightMm: 145, wallThicknessMinMm: 2.2, wallThicknessMaxMm: 5.8, volumeCm3: 620, estimatedMassKg: 1.67, shotWeightWithRunnerKg: 2.30 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'ebike-bore', name: 'Motor Stator Bore', category: 'deep_pocket', position: [0, 0, -20], dimensions: [180, 180, 95], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Precision cylindrical motor interface.' },
+      { id: 'ebike-boss', name: 'Bearing Bosses', category: 'boss', position: [80, 30, 20], dimensions: [65, 65, 55], draftAngleDeg: 2, isCosmetic: false, notes: 'Bearing support and gripping region.' },
+      { id: 'ebike-ribs', name: 'Housing Stiffening Ribs', category: 'rib', position: [-80, -55, 0], dimensions: [130, 90, 30], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Thin ribs common to compact motor housings.' },
+      { id: 'ebike-runner', name: 'Side Runner', category: 'runner_biscuit', position: [0, -150, -15], dimensions: [90, 45, 55], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial runner.' }
+    ],
+    gripCandidates: [
+      { id: 'ebike-runner-grip', label: 'A', name: 'Side Runner Clamp', location: [0, -150, 15], approachDirection: [0, 1, 0], gripWidthMm: 65, recommendedEoatType: 'runner_clamp', stabilityScore: 94, clearanceScore: 92, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Runner-only grip protects motor bore.', mitigation: 'Confirm runner geometry.' },
+      { id: 'ebike-boss-grip', label: 'B', name: 'Bearing Boss Jaw', location: [80, 30, 25], approachDirection: [1, 0, 0], gripWidthMm: 60, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 84, clearanceScore: 80, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Compact contour grip on structural boss.', mitigation: 'Protect machined interface.' }
+    ],
+    suggestedProcess: [
+      { id: 'ebike-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-250V7EX', cycleTimeSec: 8.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative compact e-mobility housing.', equipmentRequired: 'Toyo BD-250V7EX' },
+      { id: 'ebike-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.2, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '25–50 kg 6-axis robot' },
+      { id: 'ebike-cool', order: 3, name: 'Controlled Cooling', category: 'cooling', stationName: 'Air / Water Cooling', cycleTimeSec: 4, enabled: true, confidence: 'MEDIUM', factType: 'ENGINEER_CONFIRMATION_REQUIRED', description: 'Cool housing before trim and machining.', equipmentRequired: 'Cooling station' }
+    ]
+  },
+  {
+    id: 'part-automotive-oil-pan', name: 'Automotive Aluminum Oil Pan', taiwaneseIndustryName: '汽車引擎油底殼 / 油盤',
+    alloyGrade: 'ADC12', category: 'automotive', recommendedMachineTonnage: 350, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 520, widthMm: 340, heightMm: 105, wallThicknessMinMm: 2.0, wallThicknessMaxMm: 4.5, volumeCm3: 910, estimatedMassKg: 2.46, shotWeightWithRunnerKg: 3.45 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'oil-floor', name: 'Large Sealing Floor', category: 'planar_surface', position: [0, 0, 35], dimensions: [480, 300, 20], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Machined sealing surface; avoid jaw contact.' },
+      { id: 'oil-ribs', name: 'Sump Reinforcement Ribs', category: 'rib', position: [0, -20, -20], dimensions: [400, 220, 35], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Thin internal ribs require balanced cooling.' },
+      { id: 'oil-boss', name: 'Drain Plug Boss', category: 'boss', position: [170, -90, 5], dimensions: [65, 65, 45], draftAngleDeg: 2, isCosmetic: false, notes: 'Structural feature; protect machined region.' },
+      { id: 'oil-runner', name: 'Perimeter Runner', category: 'runner_biscuit', position: [0, -210, -10], dimensions: [120, 50, 55], draftAngleDeg: 5, isCosmetic: false, notes: 'Trimmed after extraction.' }
+    ],
+    gripCandidates: [
+      { id: 'oil-grip-runner', label: 'A', name: 'Perimeter Runner Clamp', location: [0, -210, 20], approachDirection: [0, 1, 0], gripWidthMm: 75, recommendedEoatType: 'runner_clamp', stabilityScore: 95, clearanceScore: 90, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Sacrificial runner grip.', mitigation: 'Check trim die access.' },
+      { id: 'oil-grip-wall', label: 'B', name: 'Outer Wall Parallel Jaw', location: [-170, 80, 0], approachDirection: [1, 0, 0], gripWidthMm: 80, recommendedEoatType: '2_finger_parallel', stabilityScore: 78, clearanceScore: 85, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Outer wall grip for runner-free extraction.', mitigation: 'Use soft pads.' }
+    ],
+    suggestedProcess: [
+      { id: 'oil-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-350V7EX', cycleTimeSec: 10.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative thin-wall automotive pan.', equipmentRequired: 'Toyo BD-350V7EX' },
+      { id: 'oil-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.8, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner clamp and controlled retract.', equipmentRequired: '50 kg class robot' },
+      { id: 'oil-trim', order: 3, name: 'Trim Press', category: 'trimming', stationName: 'Hydraulic Trim Press', cycleTimeSec: 3.5, enabled: true, confidence: 'MEDIUM', factType: 'ENGINEER_CONFIRMATION_REQUIRED', description: 'Remove perimeter runner and flash.', equipmentRequired: '20T trim press' }
+    ]
+  },
+  {
+    id: 'part-eps-steering-housing', name: 'EPS Steering Gear Housing', taiwaneseIndustryName: '電動輔助轉向 EPS 齒輪箱體',
+    alloyGrade: 'ADC12', category: 'automotive', recommendedMachineTonnage: 350, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 380, widthMm: 300, heightMm: 190, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 6.0, volumeCm3: 830, estimatedMassKg: 2.24, shotWeightWithRunnerKg: 3.10 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'eps-bore', name: 'Worm Gear Bore', category: 'deep_pocket', position: [0, 0, -20], dimensions: [170, 130, 120], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Machined bearing and gear interface.' },
+      { id: 'eps-boss', name: 'Bearing Boss', category: 'boss', position: [120, 20, 20], dimensions: [80, 80, 70], draftAngleDeg: 2, isCosmetic: false, notes: 'Structural gripping feature.' },
+      { id: 'eps-rib', name: 'Gearbox Rib Web', category: 'rib', position: [-80, -80, 0], dimensions: [180, 100, 40], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Stiffening web around gear cavity.' },
+      { id: 'eps-runner', name: 'Runner Hub', category: 'runner_biscuit', position: [0, -180, -20], dimensions: [100, 55, 60], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial grip point.' }
+    ],
+    gripCandidates: [
+      { id: 'eps-runner-grip', label: 'A', name: 'Runner Hub Clamp', location: [0, -180, 15], approachDirection: [0, 1, 0], gripWidthMm: 70, recommendedEoatType: 'runner_clamp', stabilityScore: 94, clearanceScore: 93, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Protects bearing and gear interfaces.', mitigation: 'Verify runner break-off force.' },
+      { id: 'eps-boss-grip', label: 'B', name: 'Bearing Boss Jaw', location: [120, 20, 30], approachDirection: [1, 0, 0], gripWidthMm: 75, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 86, clearanceScore: 84, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Structural boss grip.', mitigation: 'Keep jaws off machined bore.' }
+    ],
+    suggestedProcess: [
+      { id: 'eps-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-350V7EX', cycleTimeSec: 11, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative steering gear housing.', equipmentRequired: 'Toyo BD-350V7EX' },
+      { id: 'eps-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 4, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Controlled extraction with bore protection.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-hvac-compressor', name: 'HVAC Compressor Housing', taiwaneseIndustryName: '車用空調壓縮機殼體',
+    alloyGrade: 'ADC12 / AlSi9Cu3', category: 'automotive', recommendedMachineTonnage: 250, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 320, widthMm: 280, heightMm: 220, wallThicknessMinMm: 2.8, wallThicknessMaxMm: 7.0, volumeCm3: 760, estimatedMassKg: 2.05, shotWeightWithRunnerKg: 2.95 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'hvac-bore', name: 'Compressor Rotor Bore', category: 'deep_pocket', position: [0, 0, -35], dimensions: [180, 180, 150], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Deep cylindrical bore requiring careful release-agent coverage.' },
+      { id: 'hvac-boss', name: 'Mounting Boss Cluster', category: 'boss', position: [110, -60, 20], dimensions: [70, 70, 60], draftAngleDeg: 2, isCosmetic: false, notes: 'Rigid gripping features.' },
+      { id: 'hvac-runner', name: 'Runner Biscuit', category: 'runner_biscuit', position: [0, -170, -20], dimensions: [95, 55, 65], draftAngleDeg: 5, isCosmetic: false, notes: 'Primary extraction grip.' }
+    ],
+    gripCandidates: [
+      { id: 'hvac-runner-grip', label: 'A', name: 'Runner Biscuit Clamp', location: [0, -170, 20], approachDirection: [0, 1, 0], gripWidthMm: 70, recommendedEoatType: 'runner_clamp', stabilityScore: 96, clearanceScore: 92, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Sacrificial runner grip.', mitigation: 'Confirm runner strength at casting temperature.' },
+      { id: 'hvac-boss-grip', label: 'B', name: 'Mount Boss Jaw', location: [110, -60, 30], approachDirection: [1, 0, 0], gripWidthMm: 65, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 82, clearanceScore: 80, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Structural boss grip.', mitigation: 'Avoid sealing/machined faces.' }
+    ],
+    suggestedProcess: [
+      { id: 'hvac-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-250V7EX', cycleTimeSec: 10, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative automotive compressor casting.', equipmentRequired: 'Toyo BD-250V7EX' },
+      { id: 'hvac-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-water-pump-housing', name: 'Water Pump Housing', taiwaneseIndustryName: '汽車 / 工業水泵浦殼體',
+    alloyGrade: 'ADC12', category: 'industrial', recommendedMachineTonnage: 200, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 290, widthMm: 250, heightMm: 175, wallThicknessMinMm: 2.4, wallThicknessMaxMm: 5.5, volumeCm3: 510, estimatedMassKg: 1.38, shotWeightWithRunnerKg: 1.95 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'pump-volute', name: 'Volute Cavity', category: 'deep_pocket', position: [0, 0, -30], dimensions: [180, 180, 100], draftAngleDeg: 2, isCosmetic: false, notes: 'Deep fluid cavity.' },
+      { id: 'pump-flange', name: 'Mounting Flange', category: 'planar_surface', position: [0, 0, 45], dimensions: [260, 220, 18], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Machined sealing surface.' },
+      { id: 'pump-boss', name: 'Shaft Bearing Boss', category: 'boss', position: [0, 0, 25], dimensions: [75, 75, 65], draftAngleDeg: 2, isCosmetic: false, notes: 'Rigid center boss.' },
+      { id: 'pump-runner', name: 'Runner Biscuit', category: 'runner_biscuit', position: [0, -145, -15], dimensions: [85, 45, 55], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial grip point.' }
+    ],
+    gripCandidates: [{ id: 'pump-runner-grip', label: 'A', name: 'Runner Clamp', location: [0, -145, 15], approachDirection: [0, 1, 0], gripWidthMm: 60, recommendedEoatType: 'runner_clamp', stabilityScore: 95, clearanceScore: 94, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Runner-only grip.', mitigation: 'Confirm runner strength.' }],
+    suggestedProcess: [
+      { id: 'pump-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-200V7EX', cycleTimeSec: 8.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative pump housing.', equipmentRequired: 'Toyo BD-200V7EX' },
+      { id: 'pump-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.2, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '25–50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-inverter-housing', name: 'EV Inverter / Power Electronics Housing', taiwaneseIndustryName: '電動車逆變器 / 功率電子殼體',
+    alloyGrade: 'AlSi10MnMg', category: 'ev_powertrain', recommendedMachineTonnage: 500, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 620, widthMm: 420, heightMm: 150, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 6.5, volumeCm3: 1280, estimatedMassKg: 3.46, shotWeightWithRunnerKg: 4.75 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'inv-bay', name: 'Electronics Cavity', category: 'deep_pocket', position: [0, 0, -25], dimensions: [520, 320, 95], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Large shallow electronics cavity with sealing perimeter.' },
+      { id: 'inv-cooling', name: 'Cooling Rib Matrix', category: 'rib', position: [0, 80, -10], dimensions: [500, 120, 40], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Thermal management ribs.' },
+      { id: 'inv-boss', name: 'Connector / Mount Bosses', category: 'boss', position: [220, -100, 15], dimensions: [70, 70, 55], draftAngleDeg: 2, isCosmetic: false, notes: 'Structural grip locations.' },
+      { id: 'inv-runner', name: 'Dual Runner Bar', category: 'runner_biscuit', position: [0, -250, -20], dimensions: [180, 55, 65], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial dual-ingate runner.' }
+    ],
+    gripCandidates: [
+      { id: 'inv-runner-grip', label: 'A', name: 'Dual Runner Clamp', location: [0, -250, 20], approachDirection: [0, 1, 0], gripWidthMm: 120, recommendedEoatType: 'runner_clamp', stabilityScore: 97, clearanceScore: 92, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Runner-first extraction.', mitigation: 'Use dual-point clamp.' },
+      { id: 'inv-vacuum-grip', label: 'B', name: 'Planar Vacuum Assist', location: [0, 70, 45], approachDirection: [0, 0, 1], gripWidthMm: 250, recommendedEoatType: 'vacuum_planar_cup', stabilityScore: 90, clearanceScore: 88, cosmeticRisk: 'LOW', status: 'ACCEPTABLE', description: 'Distributed support across broad housing surface.', mitigation: 'Use high-temperature cups and vacuum monitoring.' }
+    ],
+    suggestedProcess: [
+      { id: 'inv-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-500V7EX', cycleTimeSec: 13, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative EV power electronics housing.', equipmentRequired: 'Toyo BD-500V7EX' },
+      { id: 'inv-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 4.8, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Dual runner extraction with vacuum assist option.', equipmentRequired: '50 kg class robot' },
+      { id: 'inv-cool', order: 3, name: 'Controlled Cooling', category: 'cooling', stationName: 'Air / Water Cooling', cycleTimeSec: 5, enabled: true, confidence: 'MEDIUM', factType: 'ENGINEER_CONFIRMATION_REQUIRED', description: 'Cool electronics housing before downstream operations.', equipmentRequired: 'Cooling station' }
+    ]
+  },
+  {
+    id: 'part-5g-radio-enclosure', name: '5G Outdoor Radio Unit Enclosure', taiwaneseIndustryName: '5G 戶外基地台 RRH / AAU 散熱殼體',
+    alloyGrade: 'ADC12', category: 'telecom_5g', recommendedMachineTonnage: 500, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 560, widthMm: 330, heightMm: 145, wallThicknessMinMm: 2.0, wallThicknessMaxMm: 5.0, volumeCm3: 1120, estimatedMassKg: 3.02, shotWeightWithRunnerKg: 4.20 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'rrh-seal', name: 'Perimeter IP Sealing Flange', category: 'planar_surface', position: [0, 0, 45], dimensions: [520, 295, 18], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Precision sealing face; avoid jaw contact.' },
+      { id: 'rrh-fins', name: 'Longitudinal Cooling Fins', category: 'rib', position: [0, 40, -25], dimensions: [500, 250, 65], draftAngleDeg: 2.5, isCosmetic: true, notes: 'Thin external thermal fins.' },
+      { id: 'rrh-boss', name: 'PCB Mount Bosses', category: 'boss', position: [190, -90, 15], dimensions: [55, 55, 45], draftAngleDeg: 2, isCosmetic: false, notes: 'Internal electronics mounting bosses.' },
+      { id: 'rrh-runner', name: 'Side Runner', category: 'runner_biscuit', position: [0, -225, -20], dimensions: [150, 50, 60], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial runner.' }
+    ],
+    gripCandidates: [
+      { id: 'rrh-runner-grip', label: 'A', name: 'Side Runner Clamp', location: [0, -225, 20], approachDirection: [0, 1, 0], gripWidthMm: 100, recommendedEoatType: 'runner_clamp', stabilityScore: 94, clearanceScore: 91, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Keeps jaws away from sealing flange and cooling fins.', mitigation: 'Verify fin clearance.' },
+      { id: 'rrh-vacuum-grip', label: 'B', name: 'Planar Vacuum Support', location: [0, 80, 35], approachDirection: [0, 0, 1], gripWidthMm: 220, recommendedEoatType: 'vacuum_planar_cup', stabilityScore: 88, clearanceScore: 86, cosmeticRisk: 'LOW', status: 'ACCEPTABLE', description: 'Distributed support for thin enclosure walls.', mitigation: 'Monitor vacuum at high temperature.' }
+    ],
+    suggestedProcess: [
+      { id: 'rrh-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-500V7EX', cycleTimeSec: 12.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative telecom die-cast enclosure.', equipmentRequired: 'Toyo BD-500V7EX' },
+      { id: 'rrh-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 4.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-servo-motor-housing', name: 'Industrial Servo Motor Housing', taiwaneseIndustryName: '工業伺服馬達殼體',
+    alloyGrade: 'ADC12 / AlSi9Cu3', category: 'industrial', recommendedMachineTonnage: 350, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 390, widthMm: 330, heightMm: 230, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 6.5, volumeCm3: 980, estimatedMassKg: 2.65, shotWeightWithRunnerKg: 3.70 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'servo-bore', name: 'Stator Bore', category: 'deep_pocket', position: [0, 0, -30], dimensions: [240, 240, 150], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Precision bore for motor stack.' },
+      { id: 'servo-rib', name: 'External Cooling Ribs', category: 'rib', position: [0, 0, 30], dimensions: [340, 250, 45], draftAngleDeg: 2.5, isCosmetic: true, notes: 'Thermal fins around motor shell.' },
+      { id: 'servo-boss', name: 'Bearing End Boss', category: 'boss', position: [0, 0, 45], dimensions: [90, 90, 65], draftAngleDeg: 2, isCosmetic: false, notes: 'Rigid axial feature.' },
+      { id: 'servo-runner', name: 'Runner Biscuit', category: 'runner_biscuit', position: [0, -195, -20], dimensions: [100, 50, 60], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial extraction grip.' }
+    ],
+    gripCandidates: [
+      { id: 'servo-runner-grip', label: 'A', name: 'Runner Biscuit Clamp', location: [0, -195, 20], approachDirection: [0, 1, 0], gripWidthMm: 70, recommendedEoatType: 'runner_clamp', stabilityScore: 96, clearanceScore: 92, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Protects stator bore and cooling ribs.', mitigation: 'Confirm runner strength.' },
+      { id: 'servo-boss-grip', label: 'B', name: 'End Boss Contour Jaw', location: [0, 0, 50], approachDirection: [1, 0, 0], gripWidthMm: 80, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 83, clearanceScore: 80, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Structural end boss grip.', mitigation: 'Keep jaw away from bearing seat.' }
+    ],
+    suggestedProcess: [
+      { id: 'servo-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-350V7EX', cycleTimeSec: 11.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative industrial motor housing.', equipmentRequired: 'Toyo BD-350V7EX' },
+      { id: 'servo-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 4, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-automation-gearbox', name: 'Automation Gearbox Housing', taiwaneseIndustryName: '自動化設備減速機 / 齒輪箱體',
+    alloyGrade: 'ADC12', category: 'industrial', recommendedMachineTonnage: 500, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 480, widthMm: 390, heightMm: 210, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 7.0, volumeCm3: 1250, estimatedMassKg: 3.38, shotWeightWithRunnerKg: 4.65 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'gear-cavity', name: 'Gear Chamber', category: 'deep_pocket', position: [0, 0, -30], dimensions: [330, 290, 140], draftAngleDeg: 2, isCosmetic: false, notes: 'Deep enclosed gear cavity.' },
+      { id: 'gear-flange', name: 'Machined Cover Flange', category: 'planar_surface', position: [0, 0, 50], dimensions: [440, 350, 20], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Sealing face.' },
+      { id: 'gear-boss', name: 'Output Bearing Boss', category: 'boss', position: [150, -20, 25], dimensions: [110, 110, 80], draftAngleDeg: 2, isCosmetic: false, notes: 'Primary structural grip candidate.' },
+      { id: 'gear-runner', name: 'Runner Hub', category: 'runner_biscuit', position: [0, -235, -15], dimensions: [120, 60, 70], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial runner.' }
+    ],
+    gripCandidates: [
+      { id: 'gear-runner-grip', label: 'A', name: 'Runner Hub Clamp', location: [0, -235, 20], approachDirection: [0, 1, 0], gripWidthMm: 85, recommendedEoatType: 'runner_clamp', stabilityScore: 97, clearanceScore: 93, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Sacrificial runner grip.', mitigation: 'Verify runner break-off.' },
+      { id: 'gear-boss-grip', label: 'B', name: 'Output Boss Jaw', location: [150, -20, 35], approachDirection: [1, 0, 0], gripWidthMm: 100, recommendedEoatType: 'custom_contour_jaw', stabilityScore: 88, clearanceScore: 84, cosmeticRisk: 'MEDIUM', status: 'ACCEPTABLE', description: 'Rigid output boss grip.', mitigation: 'Protect bearing seat.' }
+    ],
+    suggestedProcess: [
+      { id: 'gear-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-500V7EX', cycleTimeSec: 13.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative automation gearbox housing.', equipmentRequired: 'Toyo BD-500V7EX' },
+      { id: 'gear-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 4.8, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-led-heatsink', name: 'LED / Industrial Lighting Heat Sink', taiwaneseIndustryName: 'LED 工業照明散熱器 / 散熱底座',
+    alloyGrade: 'ADC12', category: 'industrial', recommendedMachineTonnage: 200, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 360, widthMm: 280, heightMm: 95, wallThicknessMinMm: 1.8, wallThicknessMaxMm: 4.0, volumeCm3: 470, estimatedMassKg: 1.27, shotWeightWithRunnerKg: 1.85 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'led-base', name: 'LED Mounting Plane', category: 'planar_surface', position: [0, 0, 35], dimensions: [320, 240, 18], draftAngleDeg: 1.2, isCosmetic: true, notes: 'Flat thermal interface surface.' },
+      { id: 'led-fins', name: 'Dense Cooling Fin Array', category: 'rib', position: [0, 0, -20], dimensions: [320, 240, 60], draftAngleDeg: 3, isCosmetic: true, notes: 'Thin fins need controlled spray and careful handling.' },
+      { id: 'led-runner', name: 'Side Runner Bar', category: 'runner_biscuit', position: [0, -155, -10], dimensions: [100, 45, 50], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial runner.' }
+    ],
+    gripCandidates: [
+      { id: 'led-runner-grip', label: 'A', name: 'Side Runner Clamp', location: [0, -155, 15], approachDirection: [0, 1, 0], gripWidthMm: 70, recommendedEoatType: 'runner_clamp', stabilityScore: 92, clearanceScore: 90, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Keeps jaws away from thermal fins.', mitigation: 'Check fin clearance.' },
+      { id: 'led-vacuum-grip', label: 'B', name: 'Planar Vacuum Cup', location: [0, 0, 40], approachDirection: [0, 0, 1], gripWidthMm: 160, recommendedEoatType: 'vacuum_planar_cup', stabilityScore: 86, clearanceScore: 88, cosmeticRisk: 'LOW', status: 'ACCEPTABLE', description: 'Broad planar support.', mitigation: 'Use high-temperature cup.' }
+    ],
+    suggestedProcess: [
+      { id: 'led-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-200V7EX', cycleTimeSec: 8, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative thin-fin thermal casting.', equipmentRequired: 'Toyo BD-200V7EX' },
+      { id: 'led-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner clamp extraction.', equipmentRequired: '25 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-3c-router-enclosure', name: '3C Networking / Router Enclosure', taiwaneseIndustryName: '3C 網通設備鋁合金機殼',
+    alloyGrade: 'ADC12', category: 'telecom_5g', recommendedMachineTonnage: 250, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 420, widthMm: 260, heightMm: 75, wallThicknessMinMm: 1.8, wallThicknessMaxMm: 3.8, volumeCm3: 520, estimatedMassKg: 1.40, shotWeightWithRunnerKg: 2.05 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'router-seal', name: 'Perimeter Sealing Flange', category: 'planar_surface', position: [0, 0, 25], dimensions: [390, 230, 16], draftAngleDeg: 1.2, isCosmetic: true, notes: 'Precision cover interface.' },
+      { id: 'router-ribs', name: 'Internal Electronics Ribs', category: 'rib', position: [0, 0, -10], dimensions: [350, 190, 30], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Thin internal thermal and structural ribs.' },
+      { id: 'router-boss', name: 'PCB Mount Bosses', category: 'boss', position: [150, 80, 10], dimensions: [45, 45, 35], draftAngleDeg: 2, isCosmetic: false, notes: 'Internal mounting bosses.' },
+      { id: 'router-runner', name: 'Runner Gate', category: 'runner_biscuit', position: [0, -150, -10], dimensions: [100, 40, 45], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial gate/runner.' }
+    ],
+    gripCandidates: [
+      { id: 'router-runner-grip', label: 'A', name: 'Runner Gate Clamp', location: [0, -150, 15], approachDirection: [0, 1, 0], gripWidthMm: 65, recommendedEoatType: 'runner_clamp', stabilityScore: 90, clearanceScore: 92, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Protects thin enclosure surfaces.', mitigation: 'Use low clamp force.' },
+      { id: 'router-vacuum-grip', label: 'B', name: 'Vacuum Planar Grip', location: [0, 0, 35], approachDirection: [0, 0, 1], gripWidthMm: 180, recommendedEoatType: 'vacuum_planar_cup', stabilityScore: 88, clearanceScore: 86, cosmeticRisk: 'LOW', status: 'ACCEPTABLE', description: 'Distributed grip for thin housing.', mitigation: 'Monitor vacuum.' }
+    ],
+    suggestedProcess: [
+      { id: 'router-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-250V7EX', cycleTimeSec: 8.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative 3C die-cast enclosure.', equipmentRequired: 'Toyo BD-250V7EX' },
+      { id: 'router-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.2, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Gentle runner extraction for thin wall enclosure.', equipmentRequired: '25–50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-pneumatic-valve-body', name: 'Pneumatic Valve / Manifold Body', taiwaneseIndustryName: '氣動閥體 / 歧管本體',
+    alloyGrade: 'ADC12', category: 'industrial', recommendedMachineTonnage: 125, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 240, widthMm: 170, heightMm: 130, wallThicknessMinMm: 2.5, wallThicknessMaxMm: 6.0, volumeCm3: 310, estimatedMassKg: 0.84, shotWeightWithRunnerKg: 1.25 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'valve-bore', name: 'Valve Bore', category: 'through_hole', position: [0, 0, 0], dimensions: [55, 55, 120], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Through-bore requires core protection.' },
+      { id: 'valve-boss', name: 'Port Bosses', category: 'boss', position: [80, 0, 15], dimensions: [55, 55, 55], draftAngleDeg: 2, isCosmetic: false, notes: 'Threaded ports are machined downstream.' },
+      { id: 'valve-runner', name: 'Runner Biscuit', category: 'runner_biscuit', position: [0, -115, -10], dimensions: [75, 40, 45], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial grip point.' }
+    ],
+    gripCandidates: [{ id: 'valve-runner-grip', label: 'A', name: 'Runner Clamp', location: [0, -115, 15], approachDirection: [0, 1, 0], gripWidthMm: 50, recommendedEoatType: 'runner_clamp', stabilityScore: 94, clearanceScore: 95, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Protects machined ports and bores.', mitigation: 'Verify runner strength.' }],
+    suggestedProcess: [
+      { id: 'valve-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-125V7EX', cycleTimeSec: 7.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative small industrial valve casting.', equipmentRequired: 'Toyo BD-125V7EX' },
+      { id: 'valve-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 2.8, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Compact runner extraction.', equipmentRequired: '12–25 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-brake-caliper', name: 'Automotive Brake Caliper Body', taiwaneseIndustryName: '汽車 / 機車煞車卡鉗本體',
+    alloyGrade: 'A380 / ADC12', category: 'automotive', recommendedMachineTonnage: 350, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 300, widthMm: 190, heightMm: 120, wallThicknessMinMm: 3.0, wallThicknessMaxMm: 8.0, volumeCm3: 690, estimatedMassKg: 1.86, shotWeightWithRunnerKg: 2.60 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'caliper-bore', name: 'Piston Bore Cluster', category: 'through_hole', position: [0, 0, 0], dimensions: [55, 120, 80], draftAngleDeg: 1.5, isCosmetic: true, notes: 'Precision piston bores are protected from gripping.' },
+      { id: 'caliper-rib', name: 'Caliper Bridge Ribs', category: 'rib', position: [0, 40, 10], dimensions: [240, 100, 50], draftAngleDeg: 2.5, isCosmetic: false, notes: 'Structural ribs around piston cavity.' },
+      { id: 'caliper-runner', name: 'Ingate Runner', category: 'runner_biscuit', position: [0, -135, -15], dimensions: [90, 45, 55], draftAngleDeg: 5, isCosmetic: false, notes: 'Sacrificial extraction point.' }
+    ],
+    gripCandidates: [{ id: 'caliper-runner-grip', label: 'A', name: 'Ingate Runner Clamp', location: [0, -135, 20], approachDirection: [0, 1, 0], gripWidthMm: 60, recommendedEoatType: 'runner_clamp', stabilityScore: 95, clearanceScore: 91, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Keeps jaws clear of piston bores.', mitigation: 'Confirm ingate strength.' }],
+    suggestedProcess: [
+      { id: 'caliper-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-350V7EX', cycleTimeSec: 9.5, enabled: true, confidence: 'MEDIUM', factType: 'ENGINEER_CONFIRMATION_REQUIRED', description: 'Representative brake housing; alloy/process depends on required properties.', equipmentRequired: 'Toyo BD-350V7EX' },
+      { id: 'caliper-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 3.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Runner-first extraction.', equipmentRequired: '50 kg class robot' }
+    ]
+  },
+  {
+    id: 'part-camera-gimbal-housing', name: 'Camera / Gimbal Motor Housing', taiwaneseIndustryName: '攝影機雲台馬達鋁合金殼體',
+    alloyGrade: 'ADC12', category: 'industrial', recommendedMachineTonnage: 125, visualMeshType: 'generic_hpdc',
+    dimensions: { lengthMm: 190, widthMm: 150, heightMm: 110, wallThicknessMinMm: 1.8, wallThicknessMaxMm: 4.0, volumeCm3: 210, estimatedMassKg: 0.57, shotWeightWithRunnerKg: 0.90 },
+    moldOpeningDirection: [0, 0, 1], extractionDirection: [0, 0, 1],
+    features: [
+      { id: 'gimbal-bore', name: 'Motor Bearing Bore', category: 'through_hole', position: [0, 0, 0], dimensions: [42, 42, 90], draftAngleDeg: 1.2, isCosmetic: true, notes: 'Small precision bearing interface.' },
+      { id: 'gimbal-boss', name: 'Motor Mount Bosses', category: 'boss', position: [55, 20, 10], dimensions: [38, 38, 35], draftAngleDeg: 2, isCosmetic: false, notes: 'Structural mounting bosses.' },
+      { id: 'gimbal-runner', name: 'Gate Runner', category: 'runner_biscuit', position: [0, -90, -10], dimensions: [60, 35, 40], draftAngleDeg: 5, isCosmetic: false, notes: 'Small sacrificial runner.' }
+    ],
+    gripCandidates: [{ id: 'gimbal-runner-grip', label: 'A', name: 'Gate Runner Clamp', location: [0, -90, 15], approachDirection: [0, 1, 0], gripWidthMm: 40, recommendedEoatType: 'runner_clamp', stabilityScore: 90, clearanceScore: 94, cosmeticRisk: 'LOW', status: 'RECOMMENDED', description: 'Compact runner grip.', mitigation: 'Limit clamp force.' }],
+    suggestedProcess: [
+      { id: 'gimbal-cast', order: 1, name: 'HPDC', category: 'casting', stationName: 'Toyo BD-125V7EX', cycleTimeSec: 6.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Representative compact precision enclosure.', equipmentRequired: 'Toyo BD-125V7EX' },
+      { id: 'gimbal-extract', order: 2, name: 'Robot Extraction', category: 'extraction', stationName: 'Die Daylight', cycleTimeSec: 2.5, enabled: true, confidence: 'HIGH', factType: 'AUTOMATION_INFERENCE', description: 'Low-force runner extraction.', equipmentRequired: '12–25 kg class robot' }
+    ]
+  }
+];
+
+
 export const SAMPLE_CAST_PARTS: CastPartModel[] = [
   {
     id: 'part-transmission-case',
@@ -1023,4 +1320,6 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
       }
     ]
   }
+  },
+  ...TAIWAN_HPDC_SAMPLE_PARTS
 ];
