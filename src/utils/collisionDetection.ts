@@ -43,7 +43,7 @@ export function runCollisionAudit(
   // Audit the continuous path, not only programmed waypoints. A segment can
   // pass through a tie bar even when both endpoints are clear.
   for (let wpi = 0; wpi < waypoints.length; wpi++) {
-    const sampleCount = wpi === 0 ? 1 : 6;
+    const sampleCount = wpi === 0 ? 1 : 7;
     for (let si = 0; si < sampleCount; si++) {
       const t = sampleCount === 1 ? 1 : si / sampleCount;
       const prevWp = wpi === 0 ? waypoints[wpi] : waypoints[wpi - 1];
