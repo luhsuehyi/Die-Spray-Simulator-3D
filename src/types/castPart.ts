@@ -6,7 +6,7 @@ import { RobotMountType } from './robot';
 
 export type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
-export type FactType = 'GEOMETRY_DERIVED_FACT' | 'AUTOMATION_INFERENCE' | 'ENGINEER_CONFIRMATION_REQUIRED';
+export type FactType = 'GEOMETRY_DERIVED_FACT' | 'PRESET_ASSUMPTION' | 'AUTOMATION_INFERENCE' | 'ENGINEER_CONFIRMATION_REQUIRED';
 
 export interface ConfidenceItem<T> {
   value: T;
@@ -121,7 +121,7 @@ export interface ConfidenceCardItem {
   key: string;
   label: string;
   value: string;
-  tier: 'GEOMETRY_DERIVED_FACT' | 'AUTOMATION_INFERENCE' | 'ENGINEER_CONFIRMATION_REQUIRED';
+  tier: 'GEOMETRY_DERIVED_FACT' | 'PRESET_ASSUMPTION' | 'AUTOMATION_INFERENCE' | 'ENGINEER_CONFIRMATION_REQUIRED';
   rationale?: string;
 }
 
