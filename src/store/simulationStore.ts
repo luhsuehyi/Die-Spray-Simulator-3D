@@ -31,7 +31,7 @@ export const DEFAULT_CYCLE_CONFIG: CellCycleConfig = {
 };
 import { DieModel, SurfaceCell } from '../types/die';
 import { SprayPhysicsParams, SprayCoverageStats, CollisionAuditResult } from '../types/spray';
-import { Language } from '../utils/i18n';
+import { Language, getStoredLanguage, persistLanguage } from '../utils/i18n';
 import {
   TOYO_DCM_FAMILY,
   MACHINE_PRESETS,
@@ -330,7 +330,7 @@ const INITIAL_SCENARIOS: ScenarioItem[] = [
 ];
 
 let storeState = {
-  language: 'en' as Language,
+  language: getStoredLanguage(),
   primaryAction: 'ai-plan' as PrimaryAction,
   isDemoMode: false,
   demoPhase: 0,
@@ -1171,6 +1171,7 @@ export function useSimulationStore(): SimulationStore {
 
   const setLanguage = useCallback((lang: Language) => {
     storeState.language = lang;
+    persistLanguage(lang);
     emitChange();
   }, []);
 
