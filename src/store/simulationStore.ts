@@ -1176,6 +1176,11 @@ export function useSimulationStore(): SimulationStore {
 
   const setMachine = useCallback((m: DieCastingMachine) => {
     storeState.machine = m;
+    storeState.cycleConfig = {
+      ...storeState.cycleConfig,
+      clampingForceTons: Math.min(storeState.cycleConfig.clampingForceTons, m.clampingForceTons),
+      platenOpenDistanceMm: Math.min(storeState.cycleConfig.platenOpenDistanceMm, m.maxDieOpeningStroke)
+    };
     emitChange();
   }, []);
 
@@ -1585,16 +1590,24 @@ export function useSimulationStore(): SimulationStore {
   }, []);
 
   const setCycleConfig = useCallback((cfg: Partial<CellCycleConfig>) => {
-    storeState.cycleConfig = {
+    const next = {
       ...storeState.cycleConfig,
       ...cfg
     };
-    if (cfg.clampingForceTons !== undefined) {
-      storeState.machine = {
-        ...storeState.machine,
-        clampingForceTons: cfg.clampingForceTons
-      };
-    }
+
+    // Cycle settings must remain physically possible for the selected DCM.
+    // Do not overwrite the machine's rated specification when an operator edits
+    // the process setting.
+    next.clampingForceTons = Math.max(
+      0,
+      Math.min(next.clampingForceTons, storeState.machine.clampingForceTons)
+    );
+    next.platenOpenDistanceMm = Math.max(
+      0,
+      Math.min(next.platenOpenDistanceMm, storeState.machine.maxDieOpeningStroke)
+    );
+
+    storeState.cycleConfig = next;
     emitChange();
   }, []);
 
