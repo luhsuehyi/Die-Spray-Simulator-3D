@@ -544,7 +544,7 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
     taiwaneseIndustryName: '電動車驅動馬達端蓋殼體 (一體成型冷卻水路)',
     alloyGrade: 'AlSi10Mg High Thermal Conductivity Alloy',
     category: 'ev_powertrain',
-    recommendedMachineTonnage: 850,
+    recommendedMachineTonnage: 800,
     visualMeshType: 'ev_motor_casing',
     dimensions: {
       lengthMm: 460,
@@ -744,7 +744,7 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
     taiwaneseIndustryName: '前避震塔一體化車身結構件 (超大型鋁合金壓鑄)',
     alloyGrade: 'Castasil-37 / AlMg5Si2Mn High Ductility Alloy',
     category: 'structural_chassis',
-    recommendedMachineTonnage: 2000,
+    recommendedMachineTonnage: 1250,
     visualMeshType: 'shock_tower',
     dimensions: {
       lengthMm: 720,
@@ -1187,7 +1187,7 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
     taiwaneseIndustryName: '電動車底盤電池包模組托盤 (大面積結構件)',
     alloyGrade: 'AlSi10MnMg High-Formability Structural Alloy',
     category: 'ev_powertrain',
-    recommendedMachineTonnage: 2500,
+    recommendedMachineTonnage: 1250,
     visualMeshType: 'battery_tray',
     dimensions: {
       lengthMm: 980,
@@ -1271,13 +1271,13 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
         order: 1,
         name: 'Large-Tonnage Structural HPDC',
         category: 'casting',
-        stationName: 'Toyo BD-2500V7EX DCM',
+        stationName: 'Toyo BD-1250V7EX DCM',
         cycleTimeSec: 26.0,
         enabled: true,
         confidence: 'HIGH',
         factType: 'GEOMETRY_DERIVED_FACT',
         description: 'High vacuum casting with multi-stage shot velocity.',
-        equipmentRequired: 'Toyo BD-2500V7EX Giga-Caster'
+        equipmentRequired: 'Toyo BD-1250V7EX'
       },
       {
         id: 'proc-bat-extract',
