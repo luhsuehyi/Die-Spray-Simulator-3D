@@ -9,7 +9,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
-import { Language, translations, persistLanguage } from '../../utils/i18n';
+import { Language, translations } from '../../utils/i18n';
 
 export const HeaderNavbar: React.FC = () => {
   const {
@@ -131,7 +131,7 @@ export const HeaderNavbar: React.FC = () => {
           <select
             id="app-language-selector"
             value={language}
-            onChange={e => { const next = e.target.value as Language; setLanguage(next); persistLanguage(next); }}
+            onChange={e => setLanguage(e.target.value as Language)}
             className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs"
           >
             <option value="en" className="bg-slate-900">EN</option>
