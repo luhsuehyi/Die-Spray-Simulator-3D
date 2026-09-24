@@ -30,9 +30,11 @@ import { TopMountReferenceModal } from './components/modals/TopMountReferenceMod
 import { CellRealismModal } from './components/modals/CellRealismModal';
 import { useSimulationStore } from './store/simulationStore';
 import { LayoutGrid, Box, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { translations } from './utils/i18n';
 
 export default function App() {
-  const { primaryAction, isDemoMode, appMode, setPrimaryAction } = useSimulationStore();
+  const { primaryAction, isDemoMode, appMode, setPrimaryAction, language } = useSimulationStore();
+  const t = translations[language];
   const [use2DPlanView, setUse2DPlanView] = useState(false);
 
   return (
@@ -77,12 +79,12 @@ export default function App() {
                     {use2DPlanView ? (
                       <>
                         <Box className="w-3.5 h-3.5 text-blue-400" />
-                        <span>3D Digital Twin</span>
+                        <span>{t.digitalTwin3D}</span>
                       </>
                     ) : (
                       <>
                         <LayoutGrid className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>2D Layout Plan</span>
+                        <span>{t.layoutPlan2D}</span>
                       </>
                     )}
                   </button>
@@ -93,7 +95,7 @@ export default function App() {
                     className="px-2.5 py-1 bg-slate-900/90 hover:bg-slate-850 text-slate-300 text-xs font-medium rounded-md border border-slate-800 shadow-md backdrop-blur-md flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Advanced Edit</span>
+                    <span>{t.advancedEdit}</span>
                   </button>
                 </div>
               </main>
