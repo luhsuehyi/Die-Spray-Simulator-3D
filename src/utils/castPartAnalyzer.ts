@@ -26,8 +26,13 @@ export function analyzeCastPart(
 
   // 1. Tonnage estimation check based on projected area
   const projectedAreaCm2 = (dim.lengthMm * dim.widthMm) / 100;
-  // Specific injection pressure for structural Al ~ 60 - 90 MPa (0.6 - 0.9 kN/cm2)
-  const estimatedTonnageRequired = Math.round((projectedAreaCm2 * 0.75 * 1.3) / 9.8); // 1.3 safety margin for intensification peak
+  // 75 MPa = 7.5 kN/cm². This is a screening estimate, not a validated filling simulation.
+  const assumedMetalPressureMPa = 75;
+  const pressureKnPerCm2 = assumedMetalPressureMPa / 10;
+  const safetyFactor = 1.30;
+  const estimatedTonnageRequired = Math.ceil(
+    (projectedAreaCm2 * pressureKnPerCm2 * safetyFactor) / 9.80665
+  );
 
   const thinWallFeatures = part.features.filter(f => f.category === 'rib' || f.category === 'thin_section');
   const deepPocketFeatures = part.features.filter(f => f.category === 'deep_pocket');
@@ -73,20 +78,20 @@ export function analyzeCastPart(
       moldDirection: {
         value: '+Z (Platen Daylight Opening Axis)',
         confidence: 'HIGH',
-        type: 'GEOMETRY_DERIVED_FACT',
-        rationale: 'Derived from parting line perimeter and draft angle taper vectors.'
+        type: 'PRESET_ASSUMPTION',
+        rationale: 'Uses the sample/CAD setup mold-opening direction. For imported CAD, validate against the actual parting line and draft analysis.'
       },
       extractionDirection: {
         value: '+Z Retract followed by +X Lateral Transfer',
         confidence: 'HIGH',
-        type: 'GEOMETRY_DERIVED_FACT',
-        rationale: 'Aligns with ejector pin stroke followed by non-operator side clearance vector.'
+        type: 'PRESET_ASSUMPTION',
+        rationale: 'Uses the configured extraction direction. Actual ejector stroke, core pulls, and robot entry direction require tooling validation.'
       },
       tonnageRequired: {
         value: Math.max(part.recommendedMachineTonnage, estimatedTonnageRequired),
         confidence: 'HIGH',
-        type: 'GEOMETRY_DERIVED_FACT',
-        rationale: `Calculated from projected casting area (${Math.round(projectedAreaCm2)} cm²) with 75 MPa metal pressure + 30% intensification factor.`
+        type: 'AUTOMATION_INFERENCE',
+        rationale: `Screening estimate from ${Math.round(projectedAreaCm2)} cm² projected area × ${assumedMetalPressureMPa} MPa assumed metal pressure × ${safetyFactor} safety factor. Validate with actual filling pressure, gate layout, and die-casting process data.`
       },
       thinWallCount: {
         value: thinWallFeatures.length,
@@ -143,11 +148,13 @@ export function analyzeCastPart(
       { key: 'dim', label: 'Bounding Box', value: `${dim.lengthMm} x ${dim.widthMm} x ${dim.heightMm} mm`, tier: 'GEOMETRY_DERIVED_FACT' },
       { key: 'mass', label: 'Cast Part Mass', value: `${part.dimensions.estimatedMassKg} kg`, tier: 'GEOMETRY_DERIVED_FACT' },
       { key: 'volume', label: 'Solid Volume', value: `${part.dimensions.volumeCm3.toFixed(1)} cm³`, tier: 'GEOMETRY_DERIVED_FACT' },
-      { key: 'tonnage', label: 'Estimated Clamping Tonnage', value: `${estimatedTonnageRequired} T`, tier: 'AUTOMATION_INFERENCE' },
+      { key: 'tonnage', label: 'Estimated Clamping Tonnage', value: `${estimatedTonnageRequired} T`, tier: 'AUTOMATION_INFERENCE', rationale: `${assumedMetalPressureMPa} MPa screening pressure × ${safetyFactor} safety factor; validate with process data.` },
       { key: 'grip', label: 'Recommended Grip Feature', value: `${recommendedGrip.label}: ${recommendedGrip.name}`, tier: 'AUTOMATION_INFERENCE' },
       { key: 'eoat', label: 'EOAT Gripper Type', value: recommendedGrip.recommendedEoatType, tier: 'AUTOMATION_INFERENCE' },
       { key: 'conf1', label: 'Tie Bar Clearance Confirmation', value: 'Requires CAD model check', tier: 'ENGINEER_CONFIRMATION_REQUIRED' },
-      { key: 'conf2', label: 'Ejector Pin Stroke Verification', value: 'Confirm with tooling shop', tier: 'ENGINEER_CONFIRMATION_REQUIRED' }
+      { key: 'conf2', label: 'Ejector Pin Stroke Verification', value: 'Confirm with tooling shop', tier: 'ENGINEER_CONFIRMATION_REQUIRED' },
+      { key: 'dir1', label: 'Mold Opening Direction', value: '+Z configured direction', tier: 'PRESET_ASSUMPTION', rationale: 'Preset/configuration value; not inferred from CAD topology.' },
+      { key: 'dir2', label: 'Extraction Direction', value: '+Z then +X configured path', tier: 'PRESET_ASSUMPTION', rationale: 'Planning assumption; verify against actual die, ejector, and core-pull layout.' }
     ],
     engineerConfirmationsRequired: confirmations,
     cellOptions,
