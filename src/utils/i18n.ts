@@ -235,8 +235,9 @@ export const DEFAULT_LANGUAGE: Language = 'en';
 
 export const getStoredLanguage = (): Language => {
   if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
-  const stored = window.localStorage.getItem('tovonn-language');
-  return stored === 'zh-TW' ? 'zh-TW' : DEFAULT_LANGUAGE;
+  const language = window.localStorage.getItem('tovonn-language') === 'zh-TW' ? 'zh-TW' : DEFAULT_LANGUAGE;
+  document.documentElement.lang = language === 'zh-TW' ? 'zh-TW' : 'en';
+  return language;
 };
 
 export const persistLanguage = (language: Language): void => {
