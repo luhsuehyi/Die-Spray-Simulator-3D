@@ -172,7 +172,7 @@ export interface CastPartModel {
   suggestedProcess: ManufacturingProcessStep[];
   cadFileSource?: 'preset' | 'uploaded_stl' | 'uploaded_step';
   cadFileName?: string;
-  visualMeshType: 'transmission_case' | 'ev_motor_casing' | 'shock_tower' | 'heatsink_enclosure' | 'steering_knuckle' | 'battery_tray' | 'custom_imported';
+  visualMeshType: 'transmission_case' | 'ev_motor_casing' | 'shock_tower' | 'heatsink_enclosure' | 'steering_knuckle' | 'battery_tray' | 'generic_hpdc' | 'custom_imported';
 }
 
 export interface CastPartAnalysisReport {
