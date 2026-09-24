@@ -9,7 +9,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { useSimulationStore } from '../../store/simulationStore';
-import { Language, translations } from '../../utils/i18n';
+import { Language, translations, persistLanguage } from '../../utils/i18n';
 
 export const HeaderNavbar: React.FC = () => {
   const {
@@ -23,7 +23,7 @@ export const HeaderNavbar: React.FC = () => {
     setIsPlaying
   } = useSimulationStore();
 
-  const t = translations[language] || translations['en'];
+  const t = translations[language] || translations.en;
 
   return (
     <header className="h-13 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between px-4 z-20 shrink-0 select-none text-slate-200">
@@ -57,7 +57,7 @@ export const HeaderNavbar: React.FC = () => {
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>AI Auto Plan</span>
+          <span>{t.aiAutoPlan}</span>
         </button>
 
         {/* Action 2: Simulation */}
@@ -73,7 +73,7 @@ export const HeaderNavbar: React.FC = () => {
           }`}
         >
           <Play className="w-3.5 h-3.5" />
-          <span>Simulation</span>
+          <span>{t.simulation}</span>
         </button>
 
         {/* Action 3: Advanced Edit */}
@@ -89,7 +89,7 @@ export const HeaderNavbar: React.FC = () => {
           }`}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>Advanced Edit</span>
+          <span>{t.advancedEdit}</span>
         </button>
       </nav>
 
@@ -108,10 +108,10 @@ export const HeaderNavbar: React.FC = () => {
               ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 font-semibold'
               : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-800'
           }`}
-          title="Start Cinematic Demo Presentation"
+          title={t.demoMode}
         >
           <MonitorPlay className="w-3.5 h-3.5 text-blue-400" />
-          <span className="hidden sm:inline">Demo Mode</span>
+          <span className="hidden sm:inline">{t.demoMode}</span>
         </button>
 
         {/* Record Video button */}
@@ -119,10 +119,10 @@ export const HeaderNavbar: React.FC = () => {
           id="header-video-export-btn"
           onClick={() => setIsVideoExportOpen(true)}
           className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-medium text-slate-300 transition cursor-pointer"
-          title="Record Demo Video (H.264 MP4)"
+          title={t.recordDemoVideo}
         >
           <Video className="w-3.5 h-3.5 text-rose-400" />
-          <span className="hidden sm:inline">Record</span>
+          <span className="hidden sm:inline">{t.record}</span>
         </button>
 
         {/* Internationalization Language Switcher */}
@@ -131,14 +131,11 @@ export const HeaderNavbar: React.FC = () => {
           <select
             id="app-language-selector"
             value={language}
-            onChange={e => setLanguage(e.target.value as Language)}
+            onChange={e => { const next = e.target.value as Language; setLanguage(next); persistLanguage(next); }}
             className="bg-transparent text-slate-200 focus:outline-none cursor-pointer text-xs"
           >
             <option value="en" className="bg-slate-900">EN</option>
-            <option value="de" className="bg-slate-900">DE</option>
-            <option value="ja" className="bg-slate-900">JA</option>
-            <option value="zh-TW" className="bg-slate-900">ZH (繁)</option>
-            <option value="zh-CN" className="bg-slate-900">ZH (简)</option>
+            <option value="zh-TW" className="bg-slate-900">繁中</option>
           </select>
         </div>
       </div>
