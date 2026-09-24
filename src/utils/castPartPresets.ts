@@ -1319,7 +1319,6 @@ export const SAMPLE_CAST_PARTS: CastPartModel[] = [
         equipmentRequired: '60T Trim Press'
       }
     ]
-  }
   },
   ...TAIWAN_HPDC_SAMPLE_PARTS
 ];

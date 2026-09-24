@@ -61,7 +61,7 @@ export function runCollisionAudit(
       const jointSample = resolvedJoints[wpi].map((q, qi) => {
         const prevQ = wpi === 0 ? q : resolvedJoints[wpi - 1][qi];
         return lerp(prevQ, q);
-      });
+      }) as [number, number, number, number, number, number];
       const fk = forwardKinematics(jointSample, robotSpec, undefined, mountConfig);
       const tcp = [wp.x, wp.y, wp.z] as [number, number, number];
       const wrist = fk.jointPositions.wristYaw;
