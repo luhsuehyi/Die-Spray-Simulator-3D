@@ -739,7 +739,7 @@ export const SimulationCanvas: React.FC = () => {
     // 2. Active Spray Cone & Mist Orientation
     const activeWp = waypoints[activeWaypointIndex];
     const isSpraying = !!(
-      currentCyclePhase === '04_SPRAY_LUBE' &&
+      currentCyclePhase === '05_SPRAY_LUBE' &&
       isSprayerInDaylight &&
       activeWp &&
       (activeWp.action === 'LUBE_SPRAY' || activeWp.action === 'AIR_BLOW' || activeWp.action === 'LUBE_AND_AIR')

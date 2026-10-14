@@ -33,24 +33,27 @@ export const AiAutoPlanView: React.FC = () => {
     aiPlanResult,
     setPrimaryAction,
     setIsPlaying,
-    machine
+    machine,
+    language
   } = useSimulationStore();
 
+  const zh = language === 'zh-TW';
+  const [envelope, setEnvelope] = useState({ lengthMm: 550, widthMm: 480, heightMm: 150, estimatedMassKg: 2.7 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   const handleFileUpload = (file: File) => {
+    if (!/\.(stl|obj|step|stp)$/i.test(file.name)) return;
     const ext = file.name.split('.').pop()?.toLowerCase();
     const fileType = ext === 'obj' ? 'obj' : ext === 'step' || ext === 'stp' ? 'step' : 'stl';
     const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
     
-    // Estimate realistic envelope dimensions from file size heuristic
-    const sizeKb = file.size / 1024;
-    const estLength = Math.min(850, Math.max(300, Math.round(Math.sqrt(sizeKb) * 18)));
-    const estWidth = Math.round(estLength * 0.75);
-    const estHeight = Math.round(estLength * 0.4);
-    const estMass = Math.round((estLength * estWidth * estHeight * 0.0000027 * 0.18) * 10) / 10;
+    // This entry point creates an envelope only; it does not parse CAD geometry.
+    const estLength = envelope.lengthMm;
+    const estWidth = envelope.widthMm;
+    const estHeight = envelope.heightMm;
+    const estMass = envelope.estimatedMassKg;
 
     importCustomCastPartCAD(cleanName, fileType, {
       lengthMm: estLength,
@@ -97,16 +100,21 @@ export const AiAutoPlanView: React.FC = () => {
             AI High-Pressure Die Spray Automation
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-2">
-            Upload Your Cast Part
+            {zh ? '選擇鑄件，開始規劃' : 'Choose a part and start planning'}
           </h1>
           <p className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-            AI automatically analyzes part geometry, assigns stationary top-mounted robot kinematics, computes spray trajectory, and guarantees collision clearance.
+            Choose an example part to build a planning envelope, generate a spray path, and inspect calculated coverage and collision warnings. No robot programming experience required.
           </p>
         </div>
 
         {/* State 1: Upload & Preset Selection (Initial View) */}
         {!aiPlanCompleted && !isAiPlanning && (
           <div className="space-y-6">
+            <div className="rounded-xl border border-slate-700 p-4 bg-slate-900">
+              <h2 className="font-semibold mb-2">{zh ? '新手開始：選下方範例 → 產生規劃 → 查看結果 → 播放' : 'Start here: choose an example below → generate plan → inspect results → preview'}</h2>
+              <p className="text-xs text-slate-400">{zh ? '範例可直接使用。自訂檔案目前只建立包絡模型，請先填寫實際尺寸與重量；不會讀取 CAD 曲面。' : 'Examples work immediately. Custom files create an envelope only; enter actual dimensions and mass first. CAD surfaces are not parsed.'}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">{(Object.keys(envelope) as (keyof typeof envelope)[]).map((key, i) => <label key={key} className="text-xs">{(zh ? ['長度 mm', '寬度 mm', '高度 mm', '重量 kg'] : ['Length mm', 'Width mm', 'Height mm', 'Mass kg'])[i]}<input type="number" min="0.1" step="0.1" value={envelope[key]} onChange={e => { const v = Number(e.target.value); if (Number.isFinite(v) && v > 0) setEnvelope(old => ({ ...old, [key]: v })); }} className="block w-full mt-1 p-2 rounded bg-slate-800" /></label>)}</div>
+            </div>
             {/* Drag & Drop Upload Card */}
             <div
               onDragOver={handleDragOver}
@@ -122,7 +130,7 @@ export const AiAutoPlanView: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".stl,.obj,.step,.stp,.iges"
+                accept=".stl,.obj,.step,.stp"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -133,11 +141,11 @@ export const AiAutoPlanView: React.FC = () => {
                 Drop your CAD part file here or <span className="text-blue-400 underline underline-offset-4">browse files</span>
               </p>
               <p className="text-xs text-slate-500 mb-3">
-                Supports STEP, STP, STL, OBJ, and IGES standard casting geometry
+                File name reference only; CAD geometry is not parsed here. Uses the dimensions and mass entered above.
               </p>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/60 text-slate-400 text-xs font-mono">
                 <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
-                {uploadedFileName ? `Loaded: ${uploadedFileName}` : 'Zero-config AI analysis'}
+                {uploadedFileName ? `Loaded: ${uploadedFileName}` : 'Envelope placeholder • not CAD analysis'}
               </div>
             </div>
 
@@ -148,7 +156,7 @@ export const AiAutoPlanView: React.FC = () => {
                   <Box className="w-3.5 h-3.5 text-blue-400" />
                   Or Select An Industrial Example Part
                 </span>
-                <span className="text-xs text-slate-500">4 Certified HPDC Benchmarks</span>
+                <span className="text-xs text-slate-500">Example parts • planning assumptions</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -223,7 +231,7 @@ export const AiAutoPlanView: React.FC = () => {
                 className="w-full sm:w-auto px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-sm transition-all duration-150 shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2 cursor-pointer font-sans shrink-0"
               >
                 <Sparkles className="w-4 h-4 text-blue-200" />
-                AI Auto Plan
+                {zh ? '產生示意規劃' : 'Generate preview plan'}
                 <ArrowRight className="w-4 h-4 text-blue-200" />
               </button>
             </div>
@@ -324,7 +332,7 @@ export const AiAutoPlanView: React.FC = () => {
               <div className="text-right">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-semibold">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  Collision Check Passed
+                  {aiPlanResult.collisionCheckPassed ? 'Sampled check: no collision found' : 'Collision found — review required'}
                 </div>
               </div>
             </div>
@@ -352,15 +360,15 @@ export const AiAutoPlanView: React.FC = () => {
                 <div className="text-xl font-bold text-cyan-400">
                   {aiPlanResult.minClearanceMm} mm
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono mt-0.5">Tie-Bars Safe</div>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5">Sampled clearance</div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-800">
-                <div className="text-xs text-slate-400 font-mono mb-1">Est. Cycle</div>
+                <div className="text-xs text-slate-400 font-mono mb-1">Spray path</div>
                 <div className="text-xl font-bold text-blue-400">
                   {aiPlanResult.cycleTimeSec} s
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono mt-0.5">Total Spray Time</div>
+                <div className="text-[11px] text-slate-500 font-mono mt-0.5">Path duration only</div>
               </div>
             </div>
 
@@ -370,7 +378,7 @@ export const AiAutoPlanView: React.FC = () => {
                 id="preview-solution-btn"
                 onClick={() => {
                   setPrimaryAction('simulation');
-                  setIsPlaying(true);
+                  setIsPlaying(false);
                 }}
                 className="w-full sm:flex-1 py-3 px-5 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium text-sm transition-all duration-150 shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2 cursor-pointer font-sans"
               >

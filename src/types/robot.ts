@@ -223,8 +223,8 @@ export type CellCyclePhase =
   | '01_MOLD_CLOSE'
   | '02_INJECTION'
   | '03_MOLD_OPEN'
-  | '04_SPRAY_LUBE'
-  | '05_PART_EXTRACTION'
+  | '04_PART_EXTRACTION'
+  | '05_SPRAY_LUBE'
   | '06_CYCLE_RESET';
 
 export interface CellCycleConfig {
