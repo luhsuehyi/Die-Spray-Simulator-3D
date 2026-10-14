@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { OperatorGuide } from './components/guided/OperatorGuide';
 import { HeaderNavbar } from './components/layout/HeaderNavbar';
 import { LeftSidebar } from './components/panels/LeftSidebar';
 import { RightSidebar } from './components/panels/RightSidebar';
@@ -100,6 +101,7 @@ export default function App() {
                 </div>
               </main>
 
+              <OperatorGuide />
               {/* Bottom Transport Bar */}
               <BottomControlBar />
             </div>

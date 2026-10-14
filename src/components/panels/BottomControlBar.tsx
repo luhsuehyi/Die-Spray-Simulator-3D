@@ -27,7 +27,10 @@ export const BottomControlBar: React.FC = () => {
     stepForward,
     stepBackward,
     resetSimulation,
-    trajectoryPlan,
+    totalCycleDurationSec,
+    primaryAction,
+    aiPlanCompleted,
+    collisionResult,
     setIsAutoSweepOpen,
     setIsAiOptimizerOpen,
     setIsCollisionAuditOpen,
@@ -37,7 +40,8 @@ export const BottomControlBar: React.FC = () => {
   } = useSimulationStore();
 
   const t = translations[language] || translations['en'];
-  const totalDuration = trajectoryPlan.totalDurationSec || 10;
+  const totalDuration = totalCycleDurationSec;
+  const previewBlocked = primaryAction === 'simulation' && (!aiPlanCompleted || collisionResult.hasCollision);
 
   const formatTime = (sec: number) => {
     const s = Math.floor(sec);
@@ -68,6 +72,7 @@ export const BottomControlBar: React.FC = () => {
 
         <button
           id="sim-play-pause-btn"
+          disabled={!isPlaying && previewBlocked}
           onClick={() => setIsPlaying(!isPlaying)}
           title={isPlaying ? t.pause : t.play}
           className="w-7 h-7 bg-blue-600 hover:bg-blue-500 text-white rounded flex items-center justify-center shadow-xs transition active:scale-95 cursor-pointer"
@@ -124,19 +129,7 @@ export const BottomControlBar: React.FC = () => {
             className="w-full h-1.5 bg-slate-850 rounded appearance-none cursor-pointer accent-cyan-400"
           />
 
-          {/* Segment Tick Markers */}
-          <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 pointer-events-none flex justify-between px-1">
-            {trajectoryPlan.segments.map((seg, idx) => {
-              const segProgress = (seg.startTimeSec / totalDuration) * 100;
-              return (
-                <div
-                  key={idx}
-                  className="absolute w-0.5 h-2 bg-slate-700/90 rounded"
-                  style={{ left: `${segProgress}%` }}
-                />
-              );
-            })}
-          </div>
+
         </div>
 
         <span className="text-[11px] font-mono text-slate-500 shrink-0 min-w-10">

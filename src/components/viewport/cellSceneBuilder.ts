@@ -553,13 +553,13 @@ export function buildDcmDigitalTwin(
           coolProg
         );
       }
-    } else if (currentPhase === '03_MOLD_OPEN' || currentPhase === '04_SPRAY_LUBE') {
+    } else if (currentPhase === '03_MOLD_OPEN') {
       moltenCavityFillMesh.visible = true;
       moltenCavityFillMesh.scale.set(1, 1, 1);
       moltenCavityMaterial.color.setHex(0xd1d5db);
       moltenCavityMaterial.emissiveIntensity = 0;
       moltenCavityFillMesh.position.set(0, 0, movPartingZ - ejectorMm);
-    } else if (currentPhase === '05_PART_EXTRACTION') {
+    } else if (currentPhase === '04_PART_EXTRACTION') {
       const isExtracted = ejectorMm === 0;
       moltenCavityFillMesh.visible = !isExtracted;
       moltenCavityFillMesh.position.set(0, 0, movPartingZ - ejectorMm);
@@ -764,7 +764,7 @@ export function createExtractorRobotRig(
     progress: number,
     isPartGripped: boolean
   ) => {
-    if (phase === '05_PART_EXTRACTION') {
+    if (phase === '04_PART_EXTRACTION') {
       const p = Math.max(0, Math.min(1, progress));
 
       if (p < 0.28) {

@@ -1,3 +1,4 @@
+import { getProductionCycle } from '../utils/productionCycle';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Waypoint, TrajectoryPlan, MotionType, SprayActionType, TargetDieFace } from '../types/path';
 import {
@@ -548,6 +549,9 @@ export function useSimulationStore(): SimulationStore {
   }, []);
 
   const runAiAutoPlan = useCallback(async () => {
+    if (storeState.isAiPlanning) return;
+    stopPlayback();
+    storeState.currentTimeSec = 0;
     storeState.isAiPlanning = true;
     storeState.aiPlanCompleted = false;
     storeState.aiPlanningProgress = 15;
@@ -585,6 +589,19 @@ export function useSimulationStore(): SimulationStore {
       platenOpenDistanceMm: Math.min(storeState.cycleConfig.platenOpenDistanceMm, matchedMachine.maxDieOpeningStroke)
     };
 
+    // Rebuild the planning envelope on every mold change; do not reuse the previous die.
+    storeState.die = {
+      ...storeState.die,
+      name: `Planning envelope for ${part.name}`,
+      dimensions: { width: part.dimensions.lengthMm + 180, height: part.dimensions.widthMm + 180, depth: Math.max(100, part.dimensions.heightMm) },
+      fixedDieOffsetZ: -storeState.cycleConfig.platenOpenDistanceMm / 2,
+      movableDieOffsetZ: storeState.cycleConfig.platenOpenDistanceMm / 2,
+      dieOpeningDistance: storeState.cycleConfig.platenOpenDistanceMm,
+      customMeshUrl: undefined,
+      features: part.features.map(f => ({ id: f.id, name: f.name, type: 'pocket' as const,
+        position: [f.position[0], f.position[1], 0] as [number, number, number],
+        dimensions: f.dimensions, targetThicknessMicrons: 25, criticality: 'normal' as const }))
+    };
     storeState.aiPlanningProgress = 35;
     storeState.aiPlanningStepText = '2/6 Evaluating sprayable surfaces, cavity pockets & thermal cooling zones...';
     emitChange();
@@ -647,7 +664,8 @@ export function useSimulationStore(): SimulationStore {
       storeState.robot,
       storeState.machine,
       storeState.die,
-      storeState.robotMountConfig
+      storeState.robotMountConfig,
+      storeState.tool
     );
 
     storeState.aiPlanningProgress = 90;
@@ -656,14 +674,14 @@ export function useSimulationStore(): SimulationStore {
 
     await new Promise(r => setTimeout(r, 350));
 
-    const initialCells = generateDieSurfaceCells(storeState.die);
+    const initialCells = generateDieSurfaceCells(storeState.die, 24);
     const plan = calculateTrajectorySegments(storeState.waypoints);
     const cov = simulateCoverage(initialCells, storeState.waypoints, plan.segments, storeState.sprayPhysics, storeState.tool);
 
     const rawCoverage = (cov.stats.fixedDieCoveragePercent + cov.stats.movableDieCoveragePercent) / 2;
-    const minClearance = Math.max(118, Math.round(colAudit.minClearanceDistanceMm > 0 ? colAudit.minClearanceDistanceMm : 128));
-    const covPercent = Math.max(93, Math.min(98, Math.round(rawCoverage || 94)));
-    const cycleTime = Math.max(20, Math.round(plan.totalDurationSec || 42));
+    const minClearance = Math.round(colAudit.minClearanceDistanceMm);
+    const covPercent = Math.max(0, Math.min(100, Math.round(rawCoverage)));
+    const cycleTime = Math.round(plan.totalDurationSec * 10) / 10;
 
     storeState.aiPlanResult = {
       robotName: yaskawaRobot.name.split('(')[0].trim() || 'Yaskawa Motoman GP50 Spray Robot',
@@ -1332,96 +1350,7 @@ export function useSimulationStore(): SimulationStore {
 
   // Synchronized Digital Twin Cycle State Machine
   const cycleInfo = useMemo(() => {
-    const cfg = storeState.cycleConfig;
-    const t0 = 0;
-    const t1 = t0 + (cfg.moldCloseTimeSec || 2.5);
-    const t2 = t1 + (cfg.injectionDwellTimeSec || 3.5);
-    const t3 = t2 + (cfg.moldOpenTimeSec || 2.5);
-    const t4 = t3 + (cfg.sprayLubeTimeSec || 6.0);
-    const t5 = t4 + (cfg.partExtractionTimeSec || 4.5);
-    const t6 = t5 + (cfg.cycleResetTimeSec || 1.0);
-    const totalDuration = Math.max(1, t6);
-
-    const curTime = ((storeState.currentTimeSec % totalDuration) + totalDuration) % totalDuration;
-    const totalProg = curTime / totalDuration;
-
-    let phase: CellCyclePhase = '01_MOLD_CLOSE';
-    let phaseProg = 0;
-    let platenOpenPct = 0;
-    let ejectorMm = 0;
-    let fillPct = 0;
-    let sprayerInDaylight = false;
-    let extractorInDaylight = false;
-    let partGripped = false;
-
-    if (curTime < t1) {
-      phase = '01_MOLD_CLOSE';
-      phaseProg = (curTime - t0) / Math.max(0.01, t1 - t0);
-      platenOpenPct = Math.max(0, Math.min(100, (1 - phaseProg) * 100));
-      ejectorMm = 0;
-      fillPct = 0;
-    } else if (curTime < t2) {
-      phase = '02_INJECTION';
-      phaseProg = (curTime - t1) / Math.max(0.01, t2 - t1);
-      platenOpenPct = 0;
-      ejectorMm = 0;
-      fillPct = phaseProg < 0.4 ? (phaseProg / 0.4) * 100 : 100;
-    } else if (curTime < t3) {
-      phase = '03_MOLD_OPEN';
-      phaseProg = (curTime - t2) / Math.max(0.01, t3 - t2);
-      platenOpenPct = Math.max(0, Math.min(100, phaseProg * 100));
-      fillPct = 100;
-      ejectorMm = phaseProg > 0.65 ? Math.min(65, ((phaseProg - 0.65) / 0.35) * 65) : 0;
-    } else if (curTime < t4) {
-      phase = '04_SPRAY_LUBE';
-      phaseProg = (curTime - t3) / Math.max(0.01, t4 - t3);
-      platenOpenPct = 100;
-      fillPct = 100;
-      ejectorMm = 65;
-      sprayerInDaylight = phaseProg > 0.08 && phaseProg < 0.92;
-    } else if (curTime < t5) {
-      phase = '05_PART_EXTRACTION';
-      phaseProg = (curTime - t4) / Math.max(0.01, t5 - t4);
-      platenOpenPct = 100;
-      fillPct = 100;
-      extractorInDaylight = phaseProg > 0.08 && phaseProg < 0.72;
-      if (phaseProg < 0.28) {
-        ejectorMm = 65;
-        partGripped = false;
-      } else if (phaseProg < 0.38) {
-        ejectorMm = 65;
-        partGripped = true;
-      } else if (phaseProg < 0.65) {
-        ejectorMm = Math.max(0, 65 * (1 - (phaseProg - 0.38) / 0.15));
-        partGripped = true;
-      } else if (phaseProg < 0.88) {
-        ejectorMm = 0;
-        partGripped = true;
-      } else {
-        ejectorMm = 0;
-        partGripped = false;
-      }
-    } else {
-      phase = '06_CYCLE_RESET';
-      phaseProg = (curTime - t5) / Math.max(0.01, t6 - t5);
-      platenOpenPct = 100;
-      ejectorMm = 0;
-      fillPct = 0;
-    }
-
-    return {
-      phase,
-      phaseProg: Math.max(0, Math.min(1, phaseProg)),
-      totalProg: Math.max(0, Math.min(1, totalProg)),
-      totalDuration,
-      platenOpenPct,
-      ejectorMm,
-      fillPct,
-      sprayerInDaylight,
-      extractorInDaylight,
-      partGripped,
-      phaseTimeBoundaries: { t0, t1, t2, t3, t4, t5, t6 }
-    };
+    return getProductionCycle(storeState.currentTimeSec, storeState.cycleConfig);
   }, [storeState.currentTimeSec, storeState.cycleConfig]);
 
   // Joint angles per waypoint (re-solved on the CAD chain for robots that have one, e.g. GP50)
@@ -1434,7 +1363,7 @@ export function useSimulationStore(): SimulationStore {
     // When in SPRAY_LUBE phase, track waypoints smoothly along the spray cycle
     // Outside SPRAY_LUBE, Robot A rests safely at Home position (waypoints[0])
     let time = 0;
-    if (cycleInfo.phase === '04_SPRAY_LUBE') {
+    if (cycleInfo.phase === '05_SPRAY_LUBE') {
       time = cycleInfo.phaseProg * (trajectoryPlan.totalDurationSec || 6.0);
     } else {
       time = 0;
@@ -1562,9 +1491,10 @@ export function useSimulationStore(): SimulationStore {
       storeState.robot,
       storeState.machine,
       storeState.die,
-      storeState.robotMountConfig
+      storeState.robotMountConfig,
+      storeState.tool
     );
-  }, [storeState.waypoints, storeState.robot, storeState.machine, storeState.die, storeState.robotMountConfig]);
+  }, [storeState.waypoints, storeState.robot, storeState.machine, storeState.die, storeState.robotMountConfig, storeState.tool]);
 
   const stepForward = useCallback(() => {
     const nextIdx = Math.min(storeState.waypoints.length - 1, activeWaypointIndex + 1);
@@ -1626,15 +1556,15 @@ export function useSimulationStore(): SimulationStore {
     const t1 = t0 + (cfg.moldCloseTimeSec || 2.5);
     const t2 = t1 + (cfg.injectionDwellTimeSec || 3.5);
     const t3 = t2 + (cfg.moldOpenTimeSec || 2.5);
-    const t4 = t3 + (cfg.sprayLubeTimeSec || 6.0);
-    const t5 = t4 + (cfg.partExtractionTimeSec || 4.5);
+    const t4 = t3 + (cfg.partExtractionTimeSec || 4.5);
+    const t5 = t4 + (cfg.sprayLubeTimeSec || 6.0);
 
     let targetTime = 0;
     if (targetPhase === '01_MOLD_CLOSE') targetTime = t0 + 0.05;
     else if (targetPhase === '02_INJECTION') targetTime = t1 + 0.05;
     else if (targetPhase === '03_MOLD_OPEN') targetTime = t2 + 0.05;
-    else if (targetPhase === '04_SPRAY_LUBE') targetTime = t3 + 0.05;
-    else if (targetPhase === '05_PART_EXTRACTION') targetTime = t4 + 0.05;
+    else if (targetPhase === '05_SPRAY_LUBE') targetTime = t4 + 0.05;
+    else if (targetPhase === '04_PART_EXTRACTION') targetTime = t3 + 0.05;
     else if (targetPhase === '06_CYCLE_RESET') targetTime = t5 + 0.05;
 
     storeState.currentTimeSec = targetTime;
@@ -1710,6 +1640,10 @@ export function useSimulationStore(): SimulationStore {
   const selectCastPart = useCallback((partId: string) => {
     const found = SAMPLE_CAST_PARTS.find(p => p.id === partId);
     if (!found) return;
+    stopPlayback();
+    storeState.currentTimeSec = 0;
+    storeState.aiPlanCompleted = false;
+    storeState.aiPlanResult = null;
     storeState.activeCastPart = found;
     storeState.castPartAnalysis = analyzeCastPart(found, storeState.machine);
     const bestGrip = found.gripCandidates.find(g => g.status === 'RECOMMENDED') || found.gripCandidates[0];

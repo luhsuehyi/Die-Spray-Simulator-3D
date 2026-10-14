@@ -294,8 +294,8 @@ export const ManufacturingPanel: React.FC = () => {
                 { id: '01_MOLD_CLOSE', label: '1. Close' },
                 { id: '02_INJECTION', label: '2. Inject' },
                 { id: '03_MOLD_OPEN', label: '3. Open' },
-                { id: '04_SPRAY_LUBE', label: '4. Spray (A)' },
-                { id: '05_PART_EXTRACTION', label: '5. Extract (B)' },
+                { id: '04_PART_EXTRACTION', label: '4. Extract (B)' },
+                { id: '05_SPRAY_LUBE', label: '5. Spray (A)' },
                 { id: '06_CYCLE_RESET', label: '6. Reset' }
               ] as const
             ).map(p => {
